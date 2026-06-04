@@ -45,9 +45,9 @@ export const handler = async (event) => {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Faltam campos: arma, calibre, scoring' }) }
   }
 
-  const userPrompt = buildUserPrompt({ arma, calibre, distancia, scoring })
-
   try {
+    const userPrompt = buildUserPrompt({ arma, calibre, distancia, scoring })
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -91,19 +91,20 @@ export const handler = async (event) => {
 
 function buildUserPrompt({ arma, calibre, distancia, scoring }) {
   const dist = distancia && distancia > 0 ? `\nDistância: ${distancia}m` : ''
+  const quad = scoring.quadrantes || {}
+  const avg = typeof scoring.avg_pts_per_shot === 'number' ? scoring.avg_pts_per_shot : 0
 
   const quadrantLines = ['amarelo', 'verde', 'vermelho', 'azul'].map((q) => {
-    const data = scoring.quadrantes[q]
-    if (!data || data.disparos === 0) return `- ${q.toUpperCase()}: 0 impactos`
-
-    const hits = data.hits.map((h) => `${h.zone}@${h.position}`).join(', ')
+    const data = quad[q]
+    if (!data || !data.disparos) return `- ${q.toUpperCase()}: 0 impactos`
+    const hits = (data.hits || []).map((h) => `${h.zone}@${h.position}`).join(', ')
     return `- ${q.toUpperCase()}: ${data.disparos} impactos (${data.pontos} pts) | ${hits}${data.spread_cm ? ` | dispersão ~${data.spread_cm}cm` : ''}`
   }).join('\n')
 
   return `Sessão de tiro:
 Arma: ${arma}
 Calibre: ${calibre}${dist}
-Total: ${scoring.total_disparos} disparos, ${scoring.total_pontos} pontos (média ${scoring.avg_pts_per_shot.toFixed(2)} pts/tiro)
+Total: ${scoring.total_disparos} disparos, ${scoring.total_pontos} pontos (média ${avg.toFixed(2)} pts/tiro)
 
 Distribuição por quadrante:
 ${quadrantLines}

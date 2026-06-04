@@ -82,9 +82,14 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
         targetType: result.targetType,
       })
       setShowDetails(true)
-      if (result.resumoError) {
-        setAnalyzeError(`Furos detectados e pontuados. Só o resumo automático falhou: ${result.resumoError}. Você pode escrever o resumo na mão.`)
+      const msgs = []
+      if (result.detectionSource !== 'ai' && result.detectionError) {
+        msgs.push(`Detector IA falhou, caí no local (só pega agrupamento nítido, perde o topo). Motivo: ${result.detectionError}`)
       }
+      if (result.resumoError) {
+        msgs.push(`Resumo automático falhou: ${result.resumoError}`)
+      }
+      setAnalyzeError(msgs.length ? msgs.join('  ·  ') : null)
     } catch (e) {
       setAnalyzeError(e.message || 'Erro ao analisar')
     } finally {
@@ -99,7 +104,7 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
     setAnalyzeError(null)
     setRedetecting(true)
     try {
-      const { scoring, frame } = await detectAndScore({
+      const { scoring, frame, source, aiError } = await detectAndScore({
         photo: session.photo,
         arma: session.arma,
         calibre: session.calibre,
@@ -115,6 +120,9 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
         pontos: scoring.total_pontos,
         diagnosisStale: true,
       })
+      if (source !== 'ai' && aiError) {
+        setAnalyzeError(`Detector IA falhou, caí no local (perde o topo). Motivo: ${aiError}`)
+      }
     } catch (e) {
       setAnalyzeError(e.message || 'Erro ao redetectar')
     } finally {

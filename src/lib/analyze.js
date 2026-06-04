@@ -3,13 +3,11 @@ import { detectTarget } from './detect.js'
 import { calibrationFromFrame, getTarget, DEFAULT_TARGET } from './targets.js'
 
 // Localizacao dos furos:
-//   true  -> usa o VISION (netlify/functions/analyze-target.js). Ele enxerga o
-//            papel rasgado branco mesmo colado na mosca, varre os 4 quadrantes e
-//            separa rosetao. E o caminho confiavel neste alvo (o CV por limiar
-//            local nao acha os furos limpos/escuros do topo).
-//   false -> usa o CV local deterministico (detect.js). Sem custo de API.
-// O SCORING continua deterministico nos dois casos (scoring.js sobre o quadro).
-// Vira a chave pra false se quiser localizacao 100% deterministica.
+//   true  -> VISION (netlify/functions/analyze-target.js): enxerga o branco mesmo
+//            colado na mosca, varre os 4 quadrantes. Caminho confiavel neste alvo.
+//   false -> CV local deterministico (detect.js). Sem custo de API.
+// O SCORING e sempre deterministico (scoring.js sobre o quadro). Vira pra false
+// se quiser localizacao 100% deterministica.
 export const USE_AI_DETECTION = true
 
 function getImageAspect(dataUrl) {
@@ -28,41 +26,78 @@ function getImageAspect(dataUrl) {
 
 function clamp01(v) { return Math.max(0, Math.min(1, typeof v === 'number' && isFinite(v) ? v : 0)) }
 
-// Localizacao por VISION. Retorna [{x,y}] em fracao 0..1 da imagem. Lanca em erro
-// (pra quem chama cair no fallback local).
+// Reduz a foto antes de mandar pro vision: payload menor e resposta mais rapida
+// (evita estourar limite de corpo / timeout da function). Nao afeta a foto
+// guardada nem a exibida; e so o que vai pro detector.
+function downscaleDataURL(dataUrl, maxDim = 1100, quality = 0.82) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image()
+      img.onload = () => {
+        const big = Math.max(img.naturalWidth, img.naturalHeight)
+        const scale = big > 0 ? Math.min(1, maxDim / big) : 1
+        if (scale >= 1) { resolve(dataUrl); return }
+        const w = Math.round(img.naturalWidth * scale)
+        const h = Math.round(img.naturalHeight * scale)
+        const c = document.createElement('canvas')
+        c.width = w; c.height = h
+        c.getContext('2d').drawImage(img, 0, 0, w, h)
+        resolve(c.toDataURL('image/jpeg', quality))
+      }
+      img.onerror = () => resolve(dataUrl)
+      img.src = dataUrl
+    } catch { resolve(dataUrl) }
+  })
+}
+
+// Le a resposta como texto e tenta JSON. Se nao for JSON, devolve o motivo REAL
+// (status + inicio do corpo) em vez de um generico, pra dar pra diagnosticar.
+async function readJson(res, label) {
+  const raw = await res.text()
+  let data
+  try { data = JSON.parse(raw) }
+  catch {
+    const snippet = (raw || '').replace(/\s+/g, ' ').trim().slice(0, 180)
+    throw new Error(`${label}: status ${res.status}, corpo nao-JSON: ${snippet || '(vazio)'}`)
+  }
+  if (!res.ok) throw new Error(data.error || `${label}: status ${res.status}`)
+  return data
+}
+
+// Localizacao por VISION. Retorna [{x,y}] em fracao 0..1 da imagem. Lanca em erro.
 async function aiDetectHoles({ photo, arma, calibre, expectedShots, distancia }) {
+  const small = await downscaleDataURL(photo)
   const res = await fetch('/api/analyze-target', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ photo, arma, calibre, expectedShots, distancia }),
+    body: JSON.stringify({ photo: small, arma, calibre, expectedShots, distancia }),
   })
-  let data
-  try { data = await res.json() } catch { throw new Error('Resposta inválida do detector') }
-  if (!res.ok) throw new Error(data.error || `Erro ${res.status} no detector`)
-  if (!Array.isArray(data.holes)) throw new Error('Detector não retornou furos')
+  const data = await readJson(res, 'detector IA')
+  if (!Array.isArray(data.holes)) throw new Error('detector IA: resposta sem campo holes')
   return data.holes
     .filter((h) => h && typeof h.x === 'number' && typeof h.y === 'number')
     .map((h) => ({ x: clamp01(h.x), y: clamp01(h.y) }))
 }
 
-// Acha os furos (vision com fallback local) e um quadro semente pra geometria.
+// Acha os furos (vision com fallback local) + quadro semente. Reporta a fonte e,
+// se a IA falhou, o motivo (sem esconder no fallback).
 async function locateHoles({ photo, arma, calibre, expectedShots, distancia, frame }) {
   let holes = null
   let source = 'local'
+  let aiError = null
   if (USE_AI_DETECTION && arma && calibre) {
     try {
       holes = await aiDetectHoles({ photo, arma, calibre, expectedShots, distancia })
       source = 'ai'
     } catch (e) {
+      aiError = e.message || 'falha no detector IA'
       console.error('AI detection failed, fallback local:', e)
     }
   }
-  // Quadro: usa o ajustado pelo atirador; senao o semente do CV local. (O vision
-  // ve a imagem toda, entao o quadro aqui serve so pra geometria/escala do score.)
   const local = await detectTarget(photo, { frame })
   if (holes === null) holes = local.holes
   const usedFrame = frame || local.frame
-  return { holes, frame: usedFrame, source }
+  return { holes, frame: usedFrame, source, aiError }
 }
 
 // Diagnostico textual (so texto, sem visao) a partir do scoring ja calculado.
@@ -72,9 +107,7 @@ export async function diagnoseShooting({ arma, calibre, distancia, scoring }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ arma, calibre, distancia, scoring }),
   })
-  let data
-  try { data = await res.json() } catch { throw new Error('Resposta inválida do servidor') }
-  if (!res.ok) throw new Error(data.error || `Erro ${res.status}`)
+  const data = await readJson(res, 'resumo')
   return { resumo: data.resumo || '' }
 }
 
@@ -88,15 +121,15 @@ export function scoreWithFrame(holes, { frame, targetType = DEFAULT_TARGET, imag
 
 // Redetecta (vision + fallback) e re-pontua contra o quadro atual, sem IA de texto.
 export async function detectAndScore({ photo, arma, calibre, expectedShots, distancia, frame = null, targetType = DEFAULT_TARGET }) {
-  const { holes, frame: usedFrame, source } = await locateHoles({ photo, arma, calibre, expectedShots, distancia, frame })
+  const { holes, frame: usedFrame, source, aiError } = await locateHoles({ photo, arma, calibre, expectedShots, distancia, frame })
   const imageAspect = await getImageAspect(photo)
   const scoring = scoreWithFrame(holes, { frame: usedFrame, targetType, imageAspect })
-  return { scoring, frame: usedFrame, holes, source }
+  return { scoring, frame: usedFrame, holes, source, aiError }
 }
 
 // Pipeline completo: localizacao (vision/local) -> scoring (quadro) -> diagnostico.
 export async function analyzeTarget({ photo, arma, calibre, expectedShots, distancia, targetType = DEFAULT_TARGET, frame = null }) {
-  const { holes, frame: usedFrame, source } = await locateHoles({ photo, arma, calibre, expectedShots, distancia, frame })
+  const { holes, frame: usedFrame, source, aiError } = await locateHoles({ photo, arma, calibre, expectedShots, distancia, frame })
   const imageAspect = await getImageAspect(photo)
   const scoring = scoreWithFrame(holes, { frame: usedFrame, targetType, imageAspect })
 
@@ -121,6 +154,7 @@ export async function analyzeTarget({ photo, arma, calibre, expectedShots, dista
     targetType,
     frame: usedFrame,
     detectionSource: source,
+    detectionError: aiError,
     rawHoles: holes,
     resumoError,
   }
