@@ -201,8 +201,39 @@ export function scoreHoles(holes, options = {}) {
   }
 }
 
+// Contagem pura para alvos sem tabela de zonas (silhueta/humanoide/refem).
+// Mesma forma de saida que scoreHoles (pra overlay/PDF nao quebrarem), mas sem
+// classificar anel e sem inventar pontos: zone 'na', points 0, mode 'count'.
+export function countScoring(holes, imageAspect = 1) {
+  const quadrantes = {}
+  for (const q of QUADRANT_NAMES) {
+    quadrantes[q] = {
+      hits: [], bull_center: { x: 0.5, y: 0.5 }, ring_3_radius: 0,
+      ring_radii: {}, disparos: 0, pontos: 0, spread_cm: null,
+    }
+  }
+  const hits = (holes || [])
+    .filter((h) => typeof h.x === 'number' && typeof h.y === 'number')
+    .map((h) => ({ x: h.x, y: h.y, zone: 'na', position: 'C', points: 0, confidence: h.confidence || 'high' }))
+  quadrantes.amarelo.hits = hits
+  quadrantes.amarelo.disparos = hits.length
+  return {
+    total_disparos: hits.length,
+    total_pontos: 0,
+    avg_pts_per_shot: 0,
+    image_aspect: imageAspect > 0 ? imageAspect : 1,
+    mode: 'count',
+    quadrantes,
+  }
+}
+
 // Rescore after manual add/remove. Preserves per-quadrant calibration and aspect.
 export function rescoreScoring(scoring) {
+  if (scoring?.mode === 'count') {
+    const holes = []
+    for (const q of QUADRANT_NAMES) for (const h of (scoring?.quadrantes?.[q]?.hits || [])) holes.push({ x: h.x, y: h.y, confidence: h.confidence })
+    return countScoring(holes, scoring?.image_aspect)
+  }
   const allHoles = []
   const quadrants = {}
   for (const q of QUADRANT_NAMES) {

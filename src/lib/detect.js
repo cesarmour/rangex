@@ -14,6 +14,8 @@
 // detect*FromPixels sao nucleos puros (testaveis fora do browser).
 // detectTarget(dataUrl, {frame}) carrega a imagem num canvas e chama os nucleos.
 
+import { frameToQuad, quadBBox, pointInQuad } from './targets.js'
+
 // Erosao/dilatacao 3x3 binarias (Uint8Array de 0/1).
 function erode(src, w, h) {
   const out = new Uint8Array(w * h)
@@ -105,13 +107,13 @@ export function detectFrameFromPixels(data, w, h) {
   }
 }
 
-// 2) Furos = manchas brancas pequenas DENTRO do quadro. frame em fracoes 0..1.
-// Retorna [{x,y}] em fracoes 0..1 da imagem.
+// 2) Furos = manchas brancas pequenas DENTRO do quadro. frame = quadrilatero
+// {tl,tr,bl,br} ou retangulo legado {x0,y0,x1,y1}. Retorna [{x,y}] fracoes 0..1.
 export function detectHolesFromPixels(data, w, h, frame) {
   const N = w * h
-  const f = frame || { x0: 0, y0: 0, x1: 1, y1: 1 }
-  const fx0 = Math.max(0, f.x0) * w, fx1 = Math.min(1, f.x1) * w
-  const fy0 = Math.max(0, f.y0) * h, fy1 = Math.min(1, f.y1) * h
+  const quad = frameToQuad(frame)
+  const bb = quadBBox(quad)
+  const fx0 = bb.x0 * w, fx1 = bb.x1 * w, fy0 = bb.y0 * h, fy1 = bb.y1 * h
   const fw = fx1 - fx0, fh = fy1 - fy0
   if (fw < 2 || fh < 2) return []
 
@@ -124,7 +126,10 @@ export function detectHolesFromPixels(data, w, h, frame) {
 
   const white = new Uint8Array(N)
   for (let y = iy0; y < iy1; y++) {
+    const yf = y / h
     for (let x = ix0; x < ix1; x++) {
+      // so dentro do quadrilatero (alvo empenado: bbox sobra fora do alvo)
+      if (!pointInQuad(quad, x / w, yf)) continue
       const i = y * w + x
       const p = i * 4
       const r = data[p], g = data[p + 1], b = data[p + 2]
@@ -136,10 +141,12 @@ export function detectHolesFromPixels(data, w, h, frame) {
   }
 
   const wblobs = components(open3(white, w, h), w, h)
-  // Area do furo proporcional ao tamanho do quadro, nao da imagem inteira.
-  const frameArea = fw * fh
-  const wAmin = 0.00012 * frameArea
-  const wAmax = 0.004 * frameArea
+  // Tamanho do furo depende da RESOLUCAO da imagem (canvas ~700px), nao do
+  // tamanho do quadro. Por isso o filtro de area e relativo a IMAGEM (N), com os
+  // coeficientes que ja funcionavam. (Erro anterior: relativo ao quadro, que
+  // subia o minimo e rejeitava as manchas brancas pequenas dos furos limpos.)
+  const wAmin = 0.000015 * N
+  const wAmax = 0.0004 * N
   const holes = []
   for (const b of wblobs) {
     if (b.area < wAmin || b.area > wAmax) continue

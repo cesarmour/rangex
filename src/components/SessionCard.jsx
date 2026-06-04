@@ -212,6 +212,11 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
                 <option key={t.id} value={t.id}>{t.label}</option>
               ))}
             </select>
+            {types.find((t) => t.id === targetType)?.mode === 'count' && (
+              <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-2.5 leading-relaxed mt-1.5">
+                Este alvo detecta e conta os furos, mas ainda <strong>não pontua por zonas</strong>. Pontuação graduada (zonas/valores) precisa das medidas oficiais do alvo — me manda a face e a tabela de pontos pra eu calibrar.
+              </div>
+            )}
           </div>
 
           <div>

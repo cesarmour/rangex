@@ -1,34 +1,18 @@
 import { useRef, useState, useEffect } from 'react'
 import { rescoreScoring, QUADRANT_NAMES } from '../lib/scoring.js'
-import { calibrationFromFrame, normalizeFrame, DEFAULT_FRAME, getTarget } from '../lib/targets.js'
+import { calibrationFromFrame, frameToQuad, normalizeFrame, DEFAULT_FRAME, getTarget } from '../lib/targets.js'
 
-// Overlay dos furos sobre a foto do alvo.
-// Coordenadas ja estao em espaco de imagem (fracao 0..1 da imagem inteira).
+// Overlay dos furos sobre a foto do alvo. Coordenadas em fracao 0..1 da imagem.
 //
 // Props:
-//   photo: data URL
-//   scoring: de scoreHoles()
-//   editable: liga edicao de furos (arrastar/adicionar/remover)
-//   onScoringChange: (newScoring) => void
-//   frame: { x0,y0,x1,y1 } area de analise (fracoes da imagem)
-//   targetType: 'fc4' | 'single'
-//   frameEditable: mostra o quadro e os cantos ajustaveis
-//   onFrameChange: (newFrame) => void  chamado ao soltar um canto
+//   photo, scoring, editable, onScoringChange
+//   frame: quadrilatero {tl,tr,bl,br} (ou retangulo legado) da area de analise
+//   targetType, frameEditable, onFrameChange
 
 const HIT_RING_COLORS = {
-  bull: '#10b981',
-  r5: '#3b82f6',
-  r4: '#f59e0b',
-  r3: '#ef4444',
-  fora: '#9ca3af',
+  bull: '#10b981', r5: '#3b82f6', r4: '#f59e0b', r3: '#ef4444', fora: '#9ca3af', na: '#9ca3af',
 }
-
-const CORNERS = [
-  { id: 'tl', fx: 'x0', fy: 'y0' },
-  { id: 'tr', fx: 'x1', fy: 'y0' },
-  { id: 'bl', fx: 'x0', fy: 'y1' },
-  { id: 'br', fx: 'x1', fy: 'y1' },
-]
+const CORNER_IDS = ['tl', 'tr', 'bl', 'br']
 
 export default function TargetOverlay({
   photo, scoring, editable = false, onScoringChange,
@@ -37,8 +21,8 @@ export default function TargetOverlay({
   const imgRef = useRef(null)
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
   const [hoveredHit, setHoveredHit] = useState(null)
-  const [drag, setDrag] = useState(null)        // arraste de marca de furo
-  const [frameDrag, setFrameDrag] = useState(null) // { corner, frame } durante o arraste do quadro
+  const [drag, setDrag] = useState(null)
+  const [frameDrag, setFrameDrag] = useState(null) // { corner, quad } durante o arraste
   const draggedRef = useRef(false)
   const dragStartRef = useRef(null)
 
@@ -51,9 +35,7 @@ export default function TargetOverlay({
   }
 
   useEffect(() => {
-    const update = () => {
-      if (imgRef.current) setImgSize({ w: imgRef.current.clientWidth, h: imgRef.current.clientHeight })
-    }
+    const update = () => { if (imgRef.current) setImgSize({ w: imgRef.current.clientWidth, h: imgRef.current.clientHeight }) }
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
@@ -61,9 +43,8 @@ export default function TargetOverlay({
 
   if (!photo) return null
 
-  const effFrame = frameDrag ? frameDrag.frame : normalizeFrame(frame || DEFAULT_FRAME)
+  const effQuad = frameDrag ? frameDrag.quad : frameToQuad(frame || DEFAULT_FRAME)
 
-  // Furos achatados de todos os quadrantes (pra render).
   const allHits = []
   for (const q of QUADRANT_NAMES) {
     const qData = scoring?.quadrantes?.[q]
@@ -78,12 +59,11 @@ export default function TargetOverlay({
       next.quadrantes[q] = qd ? { ...qd, hits: [...(qd.hits || [])] } : { hits: [] }
     }
     mutate(next)
-    onScoringChange?.(rescoreScoring(next))
+    onScoringChange?.(rescoreScoring(next)) // trata concentric e count
   }
 
   const handleImageClick = (e) => {
-    if (!editable) return
-    if (!imgRef.current) return
+    if (!editable || !imgRef.current) return
     if (draggedRef.current) { draggedRef.current = false; return }
     const { x, y } = pointToFraction(e)
     editAndRescore((next) => {
@@ -100,7 +80,7 @@ export default function TargetOverlay({
     })
   }
 
-  // ---- arraste de marca de furo ----
+  // ---- arraste de marca ----
   const onMarkerDown = (e, quadrant, idx, hit) => {
     if (!editable) return
     e.stopPropagation()
@@ -136,42 +116,32 @@ export default function TargetOverlay({
     }
   }
 
-  // ---- arraste do quadro (cantos) ----
+  // ---- arraste dos cantos do quadro (cada canto e LIVRE) ----
   const onCornerDown = (e, corner) => {
     e.stopPropagation()
     try { e.target.setPointerCapture(e.pointerId) } catch {}
     draggedRef.current = true
-    setFrameDrag({ corner, frame: { ...effFrame } })
+    const q = effQuad
+    setFrameDrag({ corner, quad: { tl: { ...q.tl }, tr: { ...q.tr }, bl: { ...q.bl }, br: { ...q.br } } })
   }
   const onCornerMove = (e) => {
     if (!frameDrag) return
     e.stopPropagation()
     const { x, y } = pointToFraction(e)
-    const c = CORNERS.find((cc) => cc.id === frameDrag.corner)
-    const MIN = 0.08
-    const cand = { ...frameDrag.frame, [c.fx]: x, [c.fy]: y }
-    // mantem x0<x1 e y0<y1 com folga minima durante o arraste
-    if (c.fx === 'x0') cand.x0 = Math.min(cand.x0, cand.x1 - MIN)
-    else cand.x1 = Math.max(cand.x1, cand.x0 + MIN)
-    if (c.fy === 'y0') cand.y0 = Math.min(cand.y0, cand.y1 - MIN)
-    else cand.y1 = Math.max(cand.y1, cand.y0 + MIN)
-    cand.x0 = Math.max(0, cand.x0); cand.y0 = Math.max(0, cand.y0)
-    cand.x1 = Math.min(1, cand.x1); cand.y1 = Math.min(1, cand.y1)
-    setFrameDrag((d) => (d ? { ...d, frame: cand } : d))
+    setFrameDrag((d) => (d ? { ...d, quad: { ...d.quad, [d.corner]: { x, y } } } : d))
   }
   const onCornerUp = (e) => {
     e.stopPropagation()
     try { e.target.releasePointerCapture(e.pointerId) } catch {}
-    const committed = frameDrag ? normalizeFrame(frameDrag.frame) : null
+    const committed = frameDrag ? normalizeFrame(frameDrag.quad) : null
     setFrameDrag(null)
     if (committed) onFrameChange?.(committed)
     setTimeout(() => { draggedRef.current = false }, 0)
   }
 
-  // Aneis de preview a partir do quadro efetivo (atualiza ao vivo no arraste).
-  const previewCal = calibrationFromFrame(effFrame, targetType).quadrants
+  // preview ao vivo a partir do quadro efetivo
+  const previewCal = calibrationFromFrame(effQuad, targetType).quadrants
   const target = getTarget(targetType)
-  // centros unicos (single colapsa os 4 num so)
   const seen = new Set()
   const previewPatterns = QUADRANT_NAMES.map((q) => {
     const c = previewCal[q]
@@ -181,10 +151,9 @@ export default function TargetOverlay({
     return { q, ...c }
   }).filter(Boolean)
 
-  const fpx = {
-    x0: effFrame.x0 * imgSize.w, y0: effFrame.y0 * imgSize.h,
-    x1: effFrame.x1 * imgSize.w, y1: effFrame.y1 * imgSize.h,
-  }
+  const P = (pt) => ({ x: pt.x * imgSize.w, y: pt.y * imgSize.h })
+  const tl = P(effQuad.tl), tr = P(effQuad.tr), bl = P(effQuad.bl), br = P(effQuad.br)
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
 
   return (
     <div className="space-y-2">
@@ -200,28 +169,20 @@ export default function TargetOverlay({
         />
 
         {imgSize.w > 0 && (
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox={`0 0 ${imgSize.w} ${imgSize.h}`}
-            preserveAspectRatio="none"
-          >
-            {/* Quadro de analise + divisores, so em modo de ajuste do quadro */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none"
+            viewBox={`0 0 ${imgSize.w} ${imgSize.h}`} preserveAspectRatio="none">
+
             {frameEditable && (
               <g>
-                <rect
-                  x={fpx.x0} y={fpx.y0}
-                  width={Math.max(0, fpx.x1 - fpx.x0)} height={Math.max(0, fpx.y1 - fpx.y0)}
-                  fill="none" stroke="#facc15" strokeWidth={2} strokeDasharray="6 4" opacity={0.95}
-                />
+                <polygon
+                  points={`${tl.x},${tl.y} ${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}`}
+                  fill="none" stroke="#facc15" strokeWidth={2} strokeDasharray="6 4" opacity={0.95} />
                 {target.patterns.length > 1 && (
-                  <g>
-                    <line x1={(fpx.x0 + fpx.x1) / 2} y1={fpx.y0} x2={(fpx.x0 + fpx.x1) / 2} y2={fpx.y1}
-                      stroke="rgba(250,204,21,0.5)" strokeWidth={1} strokeDasharray="4 4" />
-                    <line x1={fpx.x0} y1={(fpx.y0 + fpx.y1) / 2} x2={fpx.x1} y2={(fpx.y0 + fpx.y1) / 2}
-                      stroke="rgba(250,204,21,0.5)" strokeWidth={1} strokeDasharray="4 4" />
+                  <g stroke="rgba(250,204,21,0.5)" strokeWidth={1} strokeDasharray="4 4">
+                    <line x1={mid(tl, tr).x} y1={mid(tl, tr).y} x2={mid(bl, br).x} y2={mid(bl, br).y} />
+                    <line x1={mid(tl, bl).x} y1={mid(tl, bl).y} x2={mid(tr, br).x} y2={mid(tr, br).y} />
                   </g>
                 )}
-                {/* aneis de preview */}
                 {previewPatterns.map((p, i) => {
                   const cx = p.bull_center.x * imgSize.w
                   const cy = p.bull_center.y * imgSize.h
@@ -239,13 +200,11 @@ export default function TargetOverlay({
               </g>
             )}
 
-            {/* Marcas de furo */}
             {allHits.map((hit, i) => {
               const isDragging = drag && drag.quadrant === hit.quadrant && drag.idx === hit.idx
               const hx = isDragging ? drag.x : hit.x
               const hy = isDragging ? drag.y : hit.y
-              const cx = hx * imgSize.w
-              const cy = hy * imgSize.h
+              const cx = hx * imgSize.w, cy = hy * imgSize.h
               const isHovered = hoveredHit?.q === hit.quadrant && hoveredHit?.idx === hit.idx
               const ringColor = HIT_RING_COLORS[hit.zone] || '#9ca3af'
               const big = isHovered || isDragging
@@ -257,7 +216,7 @@ export default function TargetOverlay({
                     <g>
                       <rect x={cx + 12} y={cy - 24} width={86} height={20} rx={3} fill="rgba(0,0,0,0.9)" />
                       <text x={cx + 55} y={cy - 10} fontSize="11" fill="white" textAnchor="middle" fontFamily="JetBrains Mono, monospace">
-                        {labelForZone(hit.zone)} · {hit.points}pt
+                        {labelForZone(hit.zone)}{hit.zone === 'na' ? '' : ` · ${hit.points}pt`}
                       </text>
                     </g>
                   )}
@@ -274,16 +233,14 @@ export default function TargetOverlay({
               )
             })}
 
-            {/* Cantos do quadro (alvo de arraste grande pra dedo) */}
-            {frameEditable && CORNERS.map((c) => {
-              const cx = effFrame[c.fx] * imgSize.w
-              const cy = effFrame[c.fy] * imgSize.h
+            {frameEditable && CORNER_IDS.map((id) => {
+              const c = P(effQuad[id])
               return (
-                <g key={c.id}>
-                  <circle cx={cx} cy={cy} r={7} fill="#facc15" stroke="#1f2937" strokeWidth={1.5} />
-                  <circle cx={cx} cy={cy} r={22} fill="transparent"
+                <g key={id}>
+                  <circle cx={c.x} cy={c.y} r={7} fill="#facc15" stroke="#1f2937" strokeWidth={1.5} />
+                  <circle cx={c.x} cy={c.y} r={24} fill="transparent"
                     style={{ pointerEvents: 'auto', cursor: 'grab', touchAction: 'none' }}
-                    onPointerDown={(e) => onCornerDown(e, c.id)}
+                    onPointerDown={(e) => onCornerDown(e, id)}
                     onPointerMove={onCornerMove}
                     onPointerUp={onCornerUp} />
                 </g>
@@ -293,34 +250,27 @@ export default function TargetOverlay({
         )}
       </div>
 
-      {/* Resumo + legenda */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-stone-500 px-1">
         <span className="font-semibold text-stone-700">
-          {scoring?.total_disparos || 0} disparos · {scoring?.total_pontos || 0} pts
+          {scoring?.total_disparos || 0} disparos{scoring?.mode === 'count' ? '' : ` · ${scoring?.total_pontos || 0} pts`}
         </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: HIT_RING_COLORS.bull }} />
-          mosca/5 (5)
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: HIT_RING_COLORS.r4 }} />
-          anel 4
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: HIT_RING_COLORS.r3 }} />
-          anel 3
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: HIT_RING_COLORS.fora }} />
-          fora
-        </span>
+        {scoring?.mode === 'count' ? (
+          <span className="text-stone-400">contagem (sem zonas)</span>
+        ) : (
+          <>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ background: HIT_RING_COLORS.bull }} />mosca/5 (5)</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ background: HIT_RING_COLORS.r4 }} />anel 4</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ background: HIT_RING_COLORS.r3 }} />anel 3</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ background: HIT_RING_COLORS.fora }} />fora</span>
+          </>
+        )}
       </div>
 
       {editable && (
         <div className="text-[10px] text-stone-500 px-1 leading-relaxed">
           {frameEditable
-            ? 'Arraste os cantos amarelos pra encaixar o quadro no alvo: os anéis de cada padrão acompanham. Depois use "redetectar no quadro" ou marque os furos na mão. Arraste uma marca pra ajustá-la, toque numa marca pra remover, toque em outro lugar pra adicionar.'
-            : 'Arraste uma marca pra ajustá-la sobre o furo real. Toque numa marca pra removê-la. Toque em qualquer outro lugar da foto pra adicionar um furo. A pontuação recalcula a cada ajuste.'}
+            ? 'Arraste cada canto amarelo livremente pra encaixar o quadro no alvo (serve pra alvo torto/empenado): os anéis acompanham. Depois "redetectar no quadro" ou marque na mão. Arraste uma marca pra ajustar, toque pra remover, toque fora pra adicionar.'
+            : 'Arraste uma marca pra ajustá-la sobre o furo. Toque numa marca pra remover. Toque em outro lugar pra adicionar. A pontuação recalcula a cada ajuste.'}
         </div>
       )}
     </div>
@@ -328,5 +278,5 @@ export default function TargetOverlay({
 }
 
 function labelForZone(zone) {
-  return { bull: 'mosca', r5: 'anel 5', r4: 'anel 4', r3: 'anel 3', fora: 'fora' }[zone] || zone
+  return { bull: 'mosca', r5: 'anel 5', r4: 'anel 4', r3: 'anel 3', fora: 'fora', na: 'furo' }[zone] || zone
 }

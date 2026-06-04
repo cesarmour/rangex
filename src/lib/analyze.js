@@ -1,6 +1,6 @@
-import { scoreHoles } from './scoring.js'
+import { scoreHoles, countScoring } from './scoring.js'
 import { detectTarget } from './detect.js'
-import { calibrationFromFrame, DEFAULT_TARGET } from './targets.js'
+import { calibrationFromFrame, getTarget, DEFAULT_TARGET } from './targets.js'
 
 // Aspect ratio (largura/altura) da imagem, pra distancia isotropica no scoring.
 function getImageAspect(dataUrl) {
@@ -34,6 +34,8 @@ export async function diagnoseShooting({ arma, calibre, distancia, scoring }) {
 // ajusta o quadro (a geometria muda, entao nao da pra reaproveitar os centros
 // antigos: recalcula a calibracao do quadro novo e pontua de novo).
 export function scoreWithFrame(holes, { frame, targetType = DEFAULT_TARGET, imageAspect = 1 } = {}) {
+  const t = getTarget(targetType)
+  if (t.mode === 'count') return countScoring(holes || [], imageAspect)
   const { quadrants } = calibrationFromFrame(frame, targetType)
   return scoreHoles(holes || [], { quadrants, imageAspect })
 }
