@@ -1,5 +1,6 @@
 import { scoreHoles } from './scoring.js'
 import { detectTarget } from './detect.js'
+import { calibrationFromFrame, DEFAULT_TARGET } from './targets.js'
 
 // Aspect ratio (largura/altura) da imagem, pra distancia isotropica no scoring.
 function getImageAspect(dataUrl) {
@@ -29,12 +30,31 @@ export async function diagnoseShooting({ arma, calibre, distancia, scoring }) {
   return { resumo: data.resumo || '' }
 }
 
-// Pipeline: deteccao por visao computacional (local, deterministica) ->
-// scoring deterministico -> diagnostico textual (IA, sem visao).
-export async function analyzeTarget({ photo, arma, calibre, expectedShots, distancia }) {
-  const { holes, quadrants } = await detectTarget(photo)
+// Re-pontua a partir de furos + quadro + tipo de alvo. Usado quando o atirador
+// ajusta o quadro (a geometria muda, entao nao da pra reaproveitar os centros
+// antigos: recalcula a calibracao do quadro novo e pontua de novo).
+export function scoreWithFrame(holes, { frame, targetType = DEFAULT_TARGET, imageAspect = 1 } = {}) {
+  const { quadrants } = calibrationFromFrame(frame, targetType)
+  return scoreHoles(holes || [], { quadrants, imageAspect })
+}
+
+// Redetecta furos DENTRO de um quadro (ajustado pelo atirador) e re-pontua, sem
+// chamar a IA. Usado pelo botao "redetectar no quadro" depois de corrigir a area.
+export async function detectAndScore({ photo, frame = null, targetType = DEFAULT_TARGET }) {
+  const { holes, frame: usedFrame } = await detectTarget(photo, { frame })
   const imageAspect = await getImageAspect(photo)
-  const scoring = scoreHoles(holes, { quadrants, imageAspect })
+  const scoring = scoreWithFrame(holes, { frame: usedFrame, targetType, imageAspect })
+  return { scoring, frame: usedFrame, holes }
+}
+
+// Pipeline: deteccao por visao computacional (local, deterministica) dentro do
+// quadro -> geometria do tipo de alvo a partir do quadro -> scoring
+// deterministico -> diagnostico textual (IA, sem visao).
+// frame: quadro ajustado (opcional). Se nulo, a deteccao propoe um.
+export async function analyzeTarget({ photo, arma, calibre, expectedShots, distancia, targetType = DEFAULT_TARGET, frame = null }) {
+  const { holes, frame: usedFrame } = await detectTarget(photo, { frame })
+  const imageAspect = await getImageAspect(photo)
+  const scoring = scoreWithFrame(holes, { frame: usedFrame, targetType, imageAspect })
 
   let narrative = { resumo: '' }
   let resumoError = null
@@ -54,6 +74,8 @@ export async function analyzeTarget({ photo, arma, calibre, expectedShots, dista
     diagnostico: narrative.resumo,
     quadrantes: { amarelo: '', verde: '', vermelho: '', azul: '' },
     scoring,
+    targetType,
+    frame: usedFrame,
     detectionNotes: '',
     rawHoles: holes,
     resumoError,

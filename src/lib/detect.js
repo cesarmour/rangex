@@ -1,17 +1,20 @@
-// Deteccao de furos e moscas por visao computacional, sem IA.
-// O tiro neste alvo NG e uma mancha BRANCA de papel rasgado sobre a cor do
-// quadrante. Isso e detectavel direto dos pixels, com precisao, de forma
-// deterministica. A IA sai do caminho da localizacao.
+// Deteccao de furos por visao computacional LOCAL, sem IA.
+// O tiro neste alvo arranca o papel colorido e expoe o branco por baixo: o furo
+// e uma MANCHA BRANCA de papel rasgado sobre a cor, nao um buraco escuro.
 //
-// Saida: { holes:[{x,y}], quadrants:{ q:{bull_center:{x,y}, ring3_radius,...} } }
-// tudo em fracao 0..1 da imagem inteira, no mesmo formato que scoreHoles espera.
+// Mudanca de arquitetura: a deteccao NAO decide mais a geometria (centros e
+// aneis). Ela faz duas coisas e so:
+//   1) detectFrameFromPixels: propoe um QUADRO (frame) = area do alvo, como
+//      semente pro atirador ajustar. {x0,y0,x1,y1} em fracao 0..1 da imagem.
+//   2) detectHolesFromPixels: varre furos DENTRO de um quadro dado.
+// Os centros de mosca e os raios dos aneis vem de targets.js a partir do quadro.
+// Isso elimina o modo de falha em que o topo do alvo lavava no reflexo, o bbox
+// encolhia pra baixo e os quadrantes de cima ficavam fora da analise.
 //
-// detectFromPixels(data,w,h) e o nucleo puro (testavel fora do browser).
-// detectTarget(dataUrl) carrega a imagem num canvas e chama o nucleo.
+// detect*FromPixels sao nucleos puros (testaveis fora do browser).
+// detectTarget(dataUrl, {frame}) carrega a imagem num canvas e chama os nucleos.
 
-const QNAMES = ['amarelo', 'verde', 'vermelho', 'azul']
-
-// Erosao 3x3 (binaria). src/dst sao Uint8Array de 0/1.
+// Erosao/dilatacao 3x3 binarias (Uint8Array de 0/1).
 function erode(src, w, h) {
   const out = new Uint8Array(w * h)
   for (let y = 1; y < h - 1; y++) {
@@ -49,8 +52,7 @@ function close3(m, w, h, times = 1) {
   return r
 }
 
-// Componentes conectados (4-vizinhanca) via BFS. Retorna lista de blobs com
-// area, soma de coordenadas (pra centroide) e bbox.
+// Componentes conectados (4-vizinhanca) via flood fill iterativo.
 function components(mask, w, h) {
   const lbl = new Int32Array(w * h)
   const blobs = []
@@ -79,92 +81,71 @@ function components(mask, w, h) {
   return blobs
 }
 
-export function detectFromPixels(data, w, h) {
+// 1) Quadro = bbox do maior componente saturado (quadrantes coloridos vs parede).
+// Retorna fracoes 0..1 da imagem, ou null se nada saturado encontrado.
+export function detectFrameFromPixels(data, w, h) {
   const N = w * h
-  const sat = new Uint8Array(N), lum = new Uint8Array(N), mnArr = new Uint8Array(N)
+  const colored = new Uint8Array(N)
   for (let i = 0, p = 0; i < N; i++, p += 4) {
     const r = data[p], g = data[p + 1], b = data[p + 2]
     const mx = r > g ? (r > b ? r : b) : (g > b ? g : b)
-    const m = r < g ? (r < b ? r : b) : (g < b ? g : b)
-    sat[i] = mx - m; mnArr[i] = m; lum[i] = ((r + g + b) / 3) | 0
+    const mn = r < g ? (r < b ? r : b) : (g < b ? g : b)
+    colored[i] = (mx - mn) > 55 ? 1 : 0
   }
-
-  // 1) Area do alvo = maior componente saturado (quadrantes coloridos vs parede)
-  const colored = new Uint8Array(N)
-  for (let i = 0; i < N; i++) colored[i] = sat[i] > 55 ? 1 : 0
   const closed = close3(colored, w, h, 3)
-  const cblobs = components(closed, w, h)
-  if (!cblobs.length) return { holes: [], quadrants: emptyQuadrants() }
-  let big = cblobs[0]
-  for (const b of cblobs) if (b.area > big.area) big = b
-  const bx0 = big.minx, bx1 = big.maxx, by0 = big.miny, by1 = big.maxy
-  const bw = bx1 - bx0, bh = by1 - by0
-  const cx = (bx0 + bx1) / 2, cy = (by0 + by1) / 2
+  const blobs = components(closed, w, h)
+  if (!blobs.length) return null
+  let big = blobs[0]
+  for (const b of blobs) if (b.area > big.area) big = b
+  return {
+    x0: big.minx / w,
+    y0: big.miny / h,
+    x1: big.maxx / w,
+    y1: big.maxy / h,
+  }
+}
 
-  const quadOf = (px, py) => {
-    const left = px < cx, top = py < cy
-    return left ? (top ? 'amarelo' : 'vermelho') : (top ? 'verde' : 'azul')
-  }
-  const qcenter = {
-    amarelo:  { x: (bx0 + cx) / 2, y: (by0 + cy) / 2 },
-    verde:    { x: (cx + bx1) / 2, y: (by0 + cy) / 2 },
-    vermelho: { x: (bx0 + cx) / 2, y: (cy + by1) / 2 },
-    azul:     { x: (cx + bx1) / 2, y: (cy + by1) / 2 },
-  }
+// 2) Furos = manchas brancas pequenas DENTRO do quadro. frame em fracoes 0..1.
+// Retorna [{x,y}] em fracoes 0..1 da imagem.
+export function detectHolesFromPixels(data, w, h, frame) {
+  const N = w * h
+  const f = frame || { x0: 0, y0: 0, x1: 1, y1: 1 }
+  const fx0 = Math.max(0, f.x0) * w, fx1 = Math.min(1, f.x1) * w
+  const fy0 = Math.max(0, f.y0) * h, fy1 = Math.min(1, f.y1) * h
+  const fw = fx1 - fx0, fh = fy1 - fy0
+  if (fw < 2 || fh < 2) return []
 
-  // 2) Moscas = blob escuro proximo do centro do quadrante (fallback: centro)
-  const dark = new Uint8Array(N)
-  for (let y = by0; y < by1; y++) for (let x = bx0; x < bx1; x++) {
-    const i = y * w + x
-    if (lum[i] < 85) dark[i] = 1
-  }
-  const dblobs = components(open3(dark, w, h), w, h)
-  const dAmin = 0.00002 * N, dAmax = 0.002 * N, dMaxDist = 0.22 * bw
-  const bulls = {}
-  for (const b of dblobs) {
-    if (b.area < dAmin || b.area > dAmax) continue
-    const q = quadOf(b.cx, b.cy), qc = qcenter[q]
-    const dd = (b.cx - qc.x) ** 2 + (b.cy - qc.y) ** 2
-    if (Math.sqrt(dd) > dMaxDist) continue
-    if (!bulls[q] || dd < bulls[q].dd) bulls[q] = { x: b.cx, y: b.cy, dd }
-  }
-  for (const q of QNAMES) if (!bulls[q]) bulls[q] = { x: qcenter[q].x, y: qcenter[q].y, dd: 0 }
+  // Margem pequena pra afastar reflexo na borda do quadro, sem comer o miolo.
+  const m = 0.04
+  const ix0 = Math.max(1, Math.floor(fx0 + m * fw))
+  const ix1 = Math.min(w - 1, Math.ceil(fx1 - m * fw))
+  const iy0 = Math.max(1, Math.floor(fy0 + m * fh))
+  const iy1 = Math.min(h - 1, Math.ceil(fy1 - m * fh))
 
-  // 3) Furos = mancha branca pequena no miolo (margem afasta reflexo de borda)
-  const m = 0.12
-  const ix0 = bx0 + m * bw, ix1 = bx1 - m * bw, iy0 = by0 + m * bh, iy1 = by1 - m * bh
   const white = new Uint8Array(N)
-  for (let y = Math.floor(iy0); y < iy1; y++) for (let x = Math.floor(ix0); x < ix1; x++) {
-    const i = y * w + x
-    if (mnArr[i] > 165 && sat[i] < 50) white[i] = 1
+  for (let y = iy0; y < iy1; y++) {
+    for (let x = ix0; x < ix1; x++) {
+      const i = y * w + x
+      const p = i * 4
+      const r = data[p], g = data[p + 1], b = data[p + 2]
+      const mn = r < g ? (r < b ? r : b) : (g < b ? g : b)
+      const mx = r > g ? (r > b ? r : b) : (g > b ? g : b)
+      // branco = canal minimo alto (claro) e baixa saturacao (nao colorido)
+      if (mn > 165 && (mx - mn) < 50) white[i] = 1
+    }
   }
+
   const wblobs = components(open3(white, w, h), w, h)
-  const wAmin = 0.000015 * N, wAmax = 0.0004 * N
+  // Area do furo proporcional ao tamanho do quadro, nao da imagem inteira.
+  const frameArea = fw * fh
+  const wAmin = 0.00012 * frameArea
+  const wAmax = 0.004 * frameArea
   const holes = []
   for (const b of wblobs) {
     if (b.area < wAmin || b.area > wAmax) continue
     holes.push({ x: b.cx / w, y: b.cy / h })
   }
-
-  // ring3 (anel externo) = 10.77cm num alvo de 48cm de largura -> 0.2244 da largura.
-  // Medido do PDF oficial SAT/ANP. scoring.js preenche r5/r4/bull pelas proporcoes.
-  const ring3 = 0.2244 * (bw / w)
-  const quadrants = {}
-  for (const q of QNAMES) {
-    quadrants[q] = {
-      bull_center: { x: bulls[q].x / w, y: bulls[q].y / h },
-      ring3_radius: ring3,
-      ring4_radius: 0,
-      ring5_radius: 0,
-    }
-  }
-  return { holes, quadrants }
-}
-
-function emptyQuadrants() {
-  const q = {}
-  for (const n of QNAMES) q[n] = { bull_center: { x: 0.5, y: 0.5 }, ring3_radius: 0.2, ring4_radius: 0, ring5_radius: 0 }
-  return q
+  return holes
 }
 
 function loadImage(src) {
@@ -176,16 +157,22 @@ function loadImage(src) {
   })
 }
 
-// Wrapper de browser: carrega a foto, reduz pra ~700px de largura (rapido e
-// suficiente) e roda o nucleo.
-export async function detectTarget(dataUrl) {
+// Wrapper de browser. Se frame e dado (quadro ajustado pelo atirador), varre os
+// furos dentro dele. Senao, detecta um quadro semente e varre dentro dele.
+// Retorna { holes, frame } em fracoes 0..1 da imagem.
+export async function detectTarget(dataUrl, { frame = null } = {}) {
   const img = await loadImage(dataUrl)
   const scale = Math.min(1, 700 / img.naturalWidth)
-  const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale)
+  const w = Math.round(img.naturalWidth * scale)
+  const h = Math.round(img.naturalHeight * scale)
   const canvas = document.createElement('canvas')
   canvas.width = w; canvas.height = h
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   ctx.drawImage(img, 0, 0, w, h)
   const { data } = ctx.getImageData(0, 0, w, h)
-  return detectFromPixels(data, w, h)
+
+  const usedFrame = frame || detectFrameFromPixels(data, w, h) ||
+    { x0: 0.02, y0: 0.02, x1: 0.98, y1: 0.98 }
+  const holes = detectHolesFromPixels(data, w, h, usedFrame)
+  return { holes, frame: usedFrame }
 }
