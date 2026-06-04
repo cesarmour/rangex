@@ -101,6 +101,10 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
     try {
       const { scoring, frame } = await detectAndScore({
         photo: session.photo,
+        arma: session.arma,
+        calibre: session.calibre,
+        expectedShots: session.disparos > 0 ? session.disparos : null,
+        distancia: session.distancia > 0 ? session.distancia : null,
         frame: session.frame || null,
         targetType,
       })
