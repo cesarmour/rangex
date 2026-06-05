@@ -2,7 +2,10 @@
 // No vision involved. IA receives only numbers and ring classifications.
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8'
+// Modelo RAPIDO dedicado a estas chamadas sensiveis a latencia (vision/resumo).
+// Opus estourava o timeout (~10s) da function e o gateway devolvia 504. Haiku
+// termina em poucos segundos. Independe de ANTHROPIC_MODEL (que pode ser Opus).
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_FAST_MODEL || 'claude-haiku-4-5-20251001'
 
 const SYSTEM_PROMPT = `Você é um instrutor de tiro experiente. Recebe dados estruturados de uma sessão e gera um resumo técnico único, em texto corrido.
 
@@ -57,7 +60,7 @@ export const handler = async (event) => {
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
-        max_tokens: 1500,
+        max_tokens: 600,
         system: SYSTEM_PROMPT,
         messages: [
           { role: 'user', content: userPrompt },
