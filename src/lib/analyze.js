@@ -85,13 +85,17 @@ async function locateHoles({ photo, arma, calibre, expectedShots, distancia, fra
   let holes = null
   let source = 'local'
   let aiError = null
-  if (USE_AI_DETECTION && arma && calibre) {
-    try {
-      holes = await aiDetectHoles({ photo, arma, calibre, expectedShots, distancia })
-      source = 'ai'
-    } catch (e) {
-      aiError = e.message || 'falha no detector IA'
-      console.error('AI detection failed, fallback local:', e)
+  if (USE_AI_DETECTION) {
+    if (!arma || !calibre) {
+      aiError = 'arma/calibre não informados (IA pulada)'
+    } else {
+      try {
+        holes = await aiDetectHoles({ photo, arma, calibre, expectedShots, distancia })
+        source = 'ai'
+      } catch (e) {
+        aiError = e.message || 'falha no detector IA'
+        console.error('AI detection failed, fallback local:', e)
+      }
     }
   }
   const local = await detectTarget(photo, { frame })

@@ -80,6 +80,8 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
         scoring: result.scoring,
         frame: result.frame,
         targetType: result.targetType,
+        detectionSource: result.detectionSource,
+        detectionNote: result.detectionError || '',
       })
       setShowDetails(true)
       const msgs = []
@@ -119,6 +121,8 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
         disparos: scoring.total_disparos,
         pontos: scoring.total_pontos,
         diagnosisStale: true,
+        detectionSource: source,
+        detectionNote: aiError || '',
       })
       if (source !== 'ai' && aiError) {
         setAnalyzeError(`Detector IA falhou, caí no local (perde o topo). Motivo: ${aiError}`)
@@ -250,6 +254,15 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
                   frameEditable={editMode || session.scoring.total_disparos === 0}
                   onFrameChange={handleFrameChange}
                 />
+                <div className={`text-[10px] px-2 py-1 rounded ${
+                  session.detectionSource === 'ai'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                }`}>
+                  {session.detectionSource === 'ai'
+                    ? `detecção: IA · ${session.scoring.total_disparos} furos`
+                    : `detecção: local${session.detectionNote ? ` — IA: ${session.detectionNote}` : ''}`}
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => setEditMode(!editMode)}
