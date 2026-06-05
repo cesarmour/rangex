@@ -3,12 +3,13 @@ import { detectTarget } from './detect.js'
 import { calibrationFromFrame, getTarget, DEFAULT_TARGET } from './targets.js'
 
 // Localizacao dos furos:
-//   true  -> VISION (netlify/functions/analyze-target.js): enxerga o branco mesmo
-//            colado na mosca, varre os 4 quadrantes. Caminho confiavel neste alvo.
-//   false -> CV local deterministico (detect.js). Sem custo de API.
-// O SCORING e sempre deterministico (scoring.js sobre o quadro). Vira pra false
-// se quiser localizacao 100% deterministica.
-export const USE_AI_DETECTION = true
+//   false -> CV LOCAL deterministico (detect.js): mancha branca de papel rasgado.
+//            Comprovadamente preciso na foto crua (achou 9/9, 3 por quadrante,
+//            em cima dos furos), sem custo, sem timeout, deterministico. PADRAO.
+//   true  -> VISION (analyze-target.js). Mais lento, custa API, e nos testes
+//            ficou MENOS preciso que o local (marcava torto). So pra fallback.
+// O SCORING e sempre deterministico (scoring.js sobre o quadro).
+export const USE_AI_DETECTION = false
 
 function getImageAspect(dataUrl) {
   return new Promise((resolve) => {

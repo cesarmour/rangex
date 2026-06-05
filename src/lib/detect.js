@@ -141,15 +141,17 @@ export function detectHolesFromPixels(data, w, h, frame) {
   }
 
   const wblobs = components(open3(white, w, h), w, h)
-  // Tamanho do furo depende da RESOLUCAO da imagem (canvas ~700px), nao do
-  // tamanho do quadro. Por isso o filtro de area e relativo a IMAGEM (N), com os
-  // coeficientes que ja funcionavam. (Erro anterior: relativo ao quadro, que
-  // subia o minimo e rejeitava as manchas brancas pequenas dos furos limpos.)
+  // Tamanho do furo depende da RESOLUCAO (canvas ~700px), nao do quadro. Filtro
+  // de area relativo a IMAGEM. Furos limpos sao ~50-150px nessa escala.
   const wAmin = 0.000015 * N
   const wAmax = 0.0004 * N
   const holes = []
   for (const b of wblobs) {
     if (b.area < wAmin || b.area > wAmax) continue
+    // Descarta blobs que ENCOSTAM na borda da varredura: sao a parede/moldura
+    // branca que vaza pelas bordas, nunca um furo (furos ficam no miolo). Isso
+    // mata os bloboes gigantes de borda independente do tamanho/resolucao.
+    if (b.minx <= ix0 + 1 || b.maxx >= ix1 - 1 || b.miny <= iy0 + 1 || b.maxy >= iy1 - 1) continue
     holes.push({ x: b.cx / w, y: b.cy / h })
   }
   return holes
