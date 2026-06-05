@@ -12,7 +12,11 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 // Modelo RAPIDO dedicado a estas chamadas sensiveis a latencia (vision/resumo).
 // Opus estourava o timeout (~10s) da function e o gateway devolvia 504. Haiku
 // termina em poucos segundos. Independe de ANTHROPIC_MODEL (que pode ser Opus).
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_FAST_MODEL || 'claude-haiku-4-5-20251001'
+// Vision precisa de PRECISAO de localizacao. Haiku era rapido mas marcava torto;
+// Opus era preciso mas estourava o timeout. Sonnet e o meio: preciso e rapido o
+// bastante. Pra caber no limite: imagem reduzida no cliente + resposta so com os
+// furos (a calibracao vem do quadro) + max_tokens baixo.
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_VISION_MODEL || 'claude-sonnet-4-6'
 
 const SYSTEM_PROMPT = `Você analisa fotos de alvos NG: papel com 4 quadrantes coloridos (amarelo em cima-esquerda, verde em cima-direita, vermelho embaixo-esquerda, azul embaixo-direita). Cada quadrante tem uma MOSCA PRETA impressa no centro e anéis concêntricos tracejados (do centro pra fora: mosca, anel 5, anel 4, anel 3), com os números 3/4/5 impressos.
 
@@ -52,27 +56,18 @@ const USER_PROMPT_TEMPLATE = ({ arma, calibre, expectedShots, distancia }) => {
 Retorne APENAS JSON neste formato exato:
 
 {
-  "quadrants": {
-    "amarelo":  { "bull_center": { "x": 0.0, "y": 0.0 }, "ring3_radius": 0.0, "ring4_radius": 0.0, "ring5_radius": 0.0 },
-    "verde":    { "bull_center": { "x": 0.0, "y": 0.0 }, "ring3_radius": 0.0, "ring4_radius": 0.0, "ring5_radius": 0.0 },
-    "vermelho": { "bull_center": { "x": 0.0, "y": 0.0 }, "ring3_radius": 0.0, "ring4_radius": 0.0, "ring5_radius": 0.0 },
-    "azul":     { "bull_center": { "x": 0.0, "y": 0.0 }, "ring3_radius": 0.0, "ring4_radius": 0.0, "ring5_radius": 0.0 }
-  },
   "holes": [
     { "x": 0.25, "y": 0.30 },
     { "x": 0.52, "y": 0.28 }
-  ],
-  "notes": "opcional: incertezas, rosetões, quadrante cortado da foto, etc"
+  ]
 }
 
 Regras das coordenadas:
 - x e y são fração 0 a 1 da imagem INTEIRA. x=0 borda esquerda, x=1 borda direita, y=0 topo, y=1 rodapé.
-- bull_center é o centro da mosca preta impressa de cada quadrante (NÃO é um furo).
-- ring3_radius é o raio do anel mais EXTERNO (anel 3), como fração da LARGURA da imagem. ring4_radius e ring5_radius são os anéis internos. Se você só consegue medir o anel externo com confiança, devolva ring3_radius e deixe os outros como 0 (o app preenche pela proporção do alvo).
-- Cada item de "holes" é UMA mancha branca de papel rasgado (um furo), posicionado no centro da mancha. Não agrupe rosetão: 3 brancos sobrepostos = 3 itens com posições próximas.
-- Não devolva como furo a mosca preta impressa, nem nada sem branco de papel rasgado.
-- Se um quadrante não aparece na foto, devolva bull_center plausível e raios 0; não invente furos nele. Se o quadrante aparece mas não tem nenhuma mancha branca, deixe-o sem furos.
-- Se não há furos, devolva "holes": [].
+- Cada item de "holes" é UMA mancha branca de papel rasgado (um furo), posicionado EXATAMENTE no centro da mancha branca. Capriche na precisão: o ponto tem que cair em cima do branco, não ao lado.
+- Não agrupe rosetão: 3 brancos sobrepostos = 3 itens com posições próximas.
+- Não devolva a mosca preta impressa como furo, nem nada sem branco de papel rasgado.
+- Varra os 4 quadrantes um a um. Um quadrante sem nenhuma mancha branca fica sem furos. Se não há furos em nenhum, devolva "holes": [].
 
 Retorne SOMENTE o JSON, sem markdown, sem preâmbulo.`
 }
@@ -183,7 +178,7 @@ export const handler = async (event) => {
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
-        max_tokens: 1500,
+        max_tokens: 800,
         system,
         messages: [{
           role: 'user',

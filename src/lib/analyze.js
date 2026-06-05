@@ -29,7 +29,7 @@ function clamp01(v) { return Math.max(0, Math.min(1, typeof v === 'number' && is
 // Reduz a foto antes de mandar pro vision: payload menor e resposta mais rapida
 // (evita estourar limite de corpo / timeout da function). Nao afeta a foto
 // guardada nem a exibida; e so o que vai pro detector.
-function downscaleDataURL(dataUrl, maxDim = 1100, quality = 0.82) {
+function downscaleDataURL(dataUrl, maxDim = 950, quality = 0.85) {
   return new Promise((resolve) => {
     try {
       const img = new Image()
