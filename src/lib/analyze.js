@@ -82,7 +82,7 @@ async function aiDetectHoles({ photo, arma, calibre, expectedShots, distancia })
 
 // Acha os furos (vision com fallback local) + quadro semente. Reporta a fonte e,
 // se a IA falhou, o motivo (sem esconder no fallback).
-async function locateHoles({ photo, arma, calibre, expectedShots, distancia, frame }) {
+async function locateHoles({ photo, arma, calibre, expectedShots, distancia, frame, targetType = DEFAULT_TARGET }) {
   let holes = null
   let source = 'local'
   let aiError = null
@@ -99,7 +99,7 @@ async function locateHoles({ photo, arma, calibre, expectedShots, distancia, fra
       }
     }
   }
-  const local = await detectTarget(photo, { frame })
+  const local = await detectTarget(photo, { frame, target: getTarget(targetType) })
   if (holes === null) holes = local.holes
   const usedFrame = frame || local.frame
   return { holes, frame: usedFrame, source, aiError }
@@ -126,7 +126,7 @@ export function scoreWithFrame(holes, { frame, targetType = DEFAULT_TARGET, imag
 
 // Redetecta (vision + fallback) e re-pontua contra o quadro atual, sem IA de texto.
 export async function detectAndScore({ photo, arma, calibre, expectedShots, distancia, frame = null, targetType = DEFAULT_TARGET }) {
-  const { holes, frame: usedFrame, source, aiError } = await locateHoles({ photo, arma, calibre, expectedShots, distancia, frame })
+  const { holes, frame: usedFrame, source, aiError } = await locateHoles({ photo, arma, calibre, expectedShots, distancia, frame, targetType })
   const imageAspect = await getImageAspect(photo)
   const scoring = scoreWithFrame(holes, { frame: usedFrame, targetType, imageAspect })
   return { scoring, frame: usedFrame, holes, source, aiError }
@@ -134,7 +134,7 @@ export async function detectAndScore({ photo, arma, calibre, expectedShots, dist
 
 // Pipeline completo: localizacao (vision/local) -> scoring (quadro) -> diagnostico.
 export async function analyzeTarget({ photo, arma, calibre, expectedShots, distancia, targetType = DEFAULT_TARGET, frame = null }) {
-  const { holes, frame: usedFrame, source, aiError } = await locateHoles({ photo, arma, calibre, expectedShots, distancia, frame })
+  const { holes, frame: usedFrame, source, aiError } = await locateHoles({ photo, arma, calibre, expectedShots, distancia, frame, targetType })
   const imageAspect = await getImageAspect(photo)
   const scoring = scoreWithFrame(holes, { frame: usedFrame, targetType, imageAspect })
 
