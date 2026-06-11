@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { rescoreScoring, QUADRANT_NAMES } from '../lib/scoring.js'
-import { calibrationFromFrame, frameToQuad, normalizeFrame, DEFAULT_FRAME, getTarget } from '../lib/targets.js'
+import { calibrationFromFrame, frameToQuad, normalizeFrame, DEFAULT_FRAME, getTarget, bilinear, quadFromCenters } from '../lib/targets.js'
 
 // Overlay dos furos sobre a foto do alvo. Coordenadas em fracao 0..1 da imagem.
 //
@@ -33,6 +33,7 @@ export default function TargetOverlay({
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
   const [drag, setDrag] = useState(null)
   const [frameDrag, setFrameDrag] = useState(null) // { corner, quad } durante o arraste
+  const [centerDrag, setCenterDrag] = useState(null) // arraste do X da mosca: { pid, quad0, centers, start, quad }
   const [selected, setSelected] = useState(null)   // { quadrant, idx } da marca selecionada
   const [zoomKey, setZoomKey] = useState(null)     // null = alvo inteiro, senao chave do padrao
   const draggedRef = useRef(false)
@@ -45,6 +46,17 @@ export default function TargetOverlay({
     return {
       x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
       y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height)),
+    }
+  }
+
+  // Versao SEM prender em 0..1: canto do quadro pode sair da foto (foto sem
+  // borda). O pointer capture continua mandando eventos fora da imagem.
+  const pointToFractionExt = (e) => {
+    const rect = imgRef.current.getBoundingClientRect()
+    const EXT = 0.5
+    return {
+      x: Math.max(-EXT, Math.min(1 + EXT, (e.clientX - rect.left) / rect.width)),
+      y: Math.max(-EXT, Math.min(1 + EXT, (e.clientY - rect.top) / rect.height)),
     }
   }
 
@@ -65,7 +77,9 @@ export default function TargetOverlay({
 
   if (!photo) return null
 
-  const effQuad = frameDrag ? frameDrag.quad : frameToQuad(frame || DEFAULT_FRAME)
+  const effQuad = frameDrag ? frameDrag.quad
+    : centerDrag ? centerDrag.quad
+    : frameToQuad(frame || DEFAULT_FRAME)
 
   const allHits = []
   for (const q of QUADRANT_NAMES) {
@@ -163,7 +177,7 @@ export default function TargetOverlay({
   const onCornerMove = (e) => {
     if (!frameDrag) return
     e.stopPropagation()
-    const { x, y } = pointToFraction(e)
+    const { x, y } = pointToFractionExt(e)
     setFrameDrag((d) => (d ? { ...d, quad: { ...d.quad, [d.corner]: { x, y } } } : d))
   }
   const onCornerUp = (e) => {
@@ -171,6 +185,48 @@ export default function TargetOverlay({
     try { e.target.releasePointerCapture(e.pointerId) } catch {}
     const committed = frameDrag ? normalizeFrame(frameDrag.quad) : null
     setFrameDrag(null)
+    if (committed) onFrameChange?.(committed)
+    setTimeout(() => { draggedRef.current = false }, 0)
+  }
+
+  // ---- arraste do CENTRO (X da mosca) ----
+  // Arrasta a mosca direto e o quadro se resolve sozinho (inversao do bilinear
+  // pra 4 padroes, translacao pra 1). E o caminho certo quando a foto nao tem
+  // borda: o canto correspondente cai fora da imagem e tudo bem.
+  const onCenterDown = (e, pid) => {
+    e.stopPropagation()
+    try { e.target.setPointerCapture(e.pointerId) } catch {}
+    draggedRef.current = true
+    const q = effQuad
+    const quad0 = { tl: { ...q.tl }, tr: { ...q.tr }, bl: { ...q.bl }, br: { ...q.br } }
+    const centers = {}
+    for (const p of target.patterns) centers[p.id] = { ...bilinear(quad0, p.u, p.v) }
+    setCenterDrag({ pid, quad0, centers, start: { ...centers[pid] }, quad: quad0 })
+    setSelected(null)
+  }
+  const onCenterMove = (e) => {
+    if (!centerDrag) return
+    e.stopPropagation()
+    const pos = pointToFraction(e)
+    setCenterDrag((d) => {
+      if (!d) return d
+      const centers = { ...d.centers, [d.pid]: pos }
+      let quad
+      if (target.patterns.length === 4) {
+        quad = quadFromCenters(target.patterns, centers) || d.quad
+      } else {
+        const dx = pos.x - d.start.x, dy = pos.y - d.start.y
+        const mv = (p) => ({ x: p.x + dx, y: p.y + dy })
+        quad = { tl: mv(d.quad0.tl), tr: mv(d.quad0.tr), bl: mv(d.quad0.bl), br: mv(d.quad0.br) }
+      }
+      return { ...d, centers, quad }
+    })
+  }
+  const onCenterUp = (e) => {
+    e.stopPropagation()
+    try { e.target.releasePointerCapture(e.pointerId) } catch {}
+    const committed = centerDrag ? normalizeFrame(centerDrag.quad) : null
+    setCenterDrag(null)
     if (committed) onFrameChange?.(committed)
     setTimeout(() => { draggedRef.current = false }, 0)
   }
@@ -327,15 +383,40 @@ export default function TargetOverlay({
               })}
 
               {frameEditable && CORNER_IDS.map((id) => {
+                // Canto fora da foto: o handle fica PINADO na borda visivel
+                // (meio transparente) e continua arrastavel.
                 const c = P(effQuad[id])
+                const dx = Math.max(10, Math.min(imgSize.w - 10, c.x))
+                const dy = Math.max(10, Math.min(imgSize.h - 10, c.y))
+                const pinned = dx !== c.x || dy !== c.y
                 return (
-                  <g key={id}>
-                    <circle cx={c.x} cy={c.y} r={7} fill="#facc15" stroke="#1f2937" strokeWidth={1.5} />
-                    <circle cx={c.x} cy={c.y} r={24} fill="transparent"
+                  <g key={id} opacity={pinned ? 0.55 : 1}>
+                    <circle cx={dx} cy={dy} r={7} fill="#facc15" stroke="#1f2937" strokeWidth={1.5}
+                      strokeDasharray={pinned ? '2 2' : 'none'} />
+                    <circle cx={dx} cy={dy} r={24} fill="transparent"
                       style={{ pointerEvents: 'auto', cursor: 'grab', touchAction: 'none' }}
                       onPointerDown={(e) => onCornerDown(e, id)}
                       onPointerMove={onCornerMove}
                       onPointerUp={onCornerUp} />
+                  </g>
+                )
+              })}
+
+              {frameEditable && previewPatterns.map((p) => {
+                // X ciano da mosca (modelo da foto): arrasta o centro direto e o
+                // quadro acompanha, mesmo com o alvo cortado na foto.
+                const c = P(p.bull_center)
+                return (
+                  <g key={`ct-${p.q}`}>
+                    <line x1={c.x - 7} y1={c.y - 7} x2={c.x + 7} y2={c.y + 7} stroke="#083344" strokeWidth={5} strokeLinecap="round" opacity={0.5} />
+                    <line x1={c.x + 7} y1={c.y - 7} x2={c.x - 7} y2={c.y + 7} stroke="#083344" strokeWidth={5} strokeLinecap="round" opacity={0.5} />
+                    <line x1={c.x - 7} y1={c.y - 7} x2={c.x + 7} y2={c.y + 7} stroke="#22d3ee" strokeWidth={2.5} strokeLinecap="round" />
+                    <line x1={c.x + 7} y1={c.y - 7} x2={c.x - 7} y2={c.y + 7} stroke="#22d3ee" strokeWidth={2.5} strokeLinecap="round" />
+                    <circle cx={c.x} cy={c.y} r={16} fill="transparent"
+                      style={{ pointerEvents: 'auto', cursor: 'move', touchAction: 'none' }}
+                      onPointerDown={(e) => onCenterDown(e, p.q)}
+                      onPointerMove={onCenterMove}
+                      onPointerUp={onCenterUp} />
                   </g>
                 )
               })}
@@ -388,7 +469,7 @@ export default function TargetOverlay({
       {editable && (
         <div className="text-[10px] text-stone-500 px-1 leading-relaxed">
           {frameEditable
-            ? 'Use o zoom pra trabalhar num quadrante. Toque numa marca pra selecionar e remover, arraste pra ajustar, toque em área vazia pra adicionar. Os cantos amarelos ajustam o quadro (alvo torto/empenado) e os anéis acompanham; depois "redetectar no quadro" se quiser.'
+            ? 'Use o zoom pra trabalhar num quadrante. Toque numa marca pra selecionar e remover, arraste pra ajustar, toque em área vazia pra adicionar. Pra alinhar o quadro, arraste o X ciano de cada mosca: o quadro se resolve sozinho, mesmo com o alvo cortado na foto (o canto pode cair fora da imagem, fica pinado na borda). Os cantos amarelos seguem livres; depois "redetectar no quadro" se quiser.'
             : 'Use o zoom pra trabalhar num quadrante. Toque numa marca pra selecionar e remover. Arraste pra ajustar. Toque em área vazia pra adicionar. A pontuação recalcula a cada ajuste.'}
         </div>
       )}
