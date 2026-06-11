@@ -165,6 +165,12 @@ export default function TargetOverlay({
         prev && prev.quadrant === quadrant && prev.idx === idx ? null : { quadrant, idx })
     }
   }
+  // iOS pode roubar o gesto (pointercancel): descarta o arraste sem commit,
+  // senao o estado fica pendurado e o proximo toque se comporta errado.
+  const onMarkerCancel = () => {
+    setDrag(null)
+    setTimeout(() => { draggedRef.current = false }, 0)
+  }
 
   // ---- arraste dos cantos do quadro (cada canto e LIVRE) ----
   const onCornerDown = (e, corner) => {
@@ -234,6 +240,10 @@ export default function TargetOverlay({
   // preview ao vivo a partir do quadro efetivo
   const previewCal = calibrationFromFrame(effQuad, targetType).quadrants
   const target = getTarget(targetType)
+  // Com 4 padroes, os 4 centros determinam o quadro inteiro (8 dof = 8 dof):
+  // canto arrastavel vira redundante e so causa arraste acidental (o canto
+  // pinado na borda fica onde o dedo encosta). Entao no fc4 so os X mandam.
+  const centersDetermineQuad = target.patterns.length === 4
   const seen = new Set()
   const previewPatterns = QUADRANT_NAMES.map((q) => {
     const c = previewCal[q]
@@ -364,7 +374,8 @@ export default function TargetOverlay({
                         style={{ pointerEvents: 'auto', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
                         onPointerDown={(e) => onMarkerDown(e, hit.quadrant, hit.idx, hit)}
                         onPointerMove={onMarkerMove}
-                        onPointerUp={(e) => onMarkerUp(e, hit.quadrant, hit.idx)} />
+                        onPointerUp={(e) => onMarkerUp(e, hit.quadrant, hit.idx)}
+                        onPointerCancel={onMarkerCancel} />
                     )}
                     {editable && isSelected && !isDragging && (
                       <g
@@ -382,7 +393,7 @@ export default function TargetOverlay({
                 )
               })}
 
-              {frameEditable && CORNER_IDS.map((id) => {
+              {frameEditable && !centersDetermineQuad && CORNER_IDS.map((id) => {
                 // Canto fora da foto: o handle fica PINADO na borda visivel
                 // (meio transparente) e continua arrastavel.
                 const c = P(effQuad[id])
@@ -397,7 +408,8 @@ export default function TargetOverlay({
                       style={{ pointerEvents: 'auto', cursor: 'grab', touchAction: 'none' }}
                       onPointerDown={(e) => onCornerDown(e, id)}
                       onPointerMove={onCornerMove}
-                      onPointerUp={onCornerUp} />
+                      onPointerUp={onCornerUp}
+                      onPointerCancel={onCornerUp} />
                   </g>
                 )
               })}
@@ -416,7 +428,8 @@ export default function TargetOverlay({
                       style={{ pointerEvents: 'auto', cursor: 'move', touchAction: 'none' }}
                       onPointerDown={(e) => onCenterDown(e, p.q)}
                       onPointerMove={onCenterMove}
-                      onPointerUp={onCenterUp} />
+                      onPointerUp={onCenterUp}
+                      onPointerCancel={onCenterUp} />
                   </g>
                 )
               })}
@@ -469,7 +482,9 @@ export default function TargetOverlay({
       {editable && (
         <div className="text-[10px] text-stone-500 px-1 leading-relaxed">
           {frameEditable
-            ? 'Use o zoom pra trabalhar num quadrante. Toque numa marca pra selecionar e remover, arraste pra ajustar, toque em área vazia pra adicionar. Pra alinhar o quadro, arraste o X ciano de cada mosca: o quadro se resolve sozinho, mesmo com o alvo cortado na foto (o canto pode cair fora da imagem, fica pinado na borda). Os cantos amarelos seguem livres; depois "redetectar no quadro" se quiser.'
+            ? (centersDetermineQuad
+                ? 'Use o zoom pra trabalhar num quadrante. Toque numa marca pra selecionar e remover, arraste pra ajustar, toque em área vazia pra adicionar. Pra alinhar o quadro, arraste o X ciano de cada mosca até o centro impresso: cada X é independente e o quadro se resolve sozinho, mesmo com o alvo cortado na foto. Depois "redetectar no quadro" se quiser.'
+                : 'Use o zoom pra trabalhar no alvo. Toque numa marca pra selecionar e remover, arraste pra ajustar, toque em área vazia pra adicionar. Arraste o X ciano pra posicionar o centro e os cantos amarelos pra dar o tamanho/forma do quadro (o canto pode sair da foto, fica pinado na borda). Depois "redetectar no quadro" se quiser.')
             : 'Use o zoom pra trabalhar num quadrante. Toque numa marca pra selecionar e remover. Arraste pra ajustar. Toque em área vazia pra adicionar. A pontuação recalcula a cada ajuste.'}
         </div>
       )}
