@@ -4,6 +4,16 @@ import { calibrationFromFrame, frameToQuad, normalizeFrame, DEFAULT_FRAME, getTa
 
 // Overlay dos furos sobre a foto do alvo. Coordenadas em fracao 0..1 da imagem.
 //
+// Edicao manual (modelo novo):
+// - Marca pequena: circulinho fino na cor da zona + etiqueta (A1, V2, R3, B1),
+//   sem cobrir o furo.
+// - Zoom por quadrante (botoes acima da foto) pra posicionar com precisao.
+// - Remocao por SELECAO: toque na marca seleciona, ai aparece o botao
+//   "remover" (chip X na foto + barra abaixo). Toque direto NAO apaga mais,
+//   o que acabava apagando sem querer.
+// - Arrastar continua movendo a marca. Toque em area vazia adiciona furo
+//   (se tiver marca selecionada, o primeiro toque so desseleciona).
+//
 // Props:
 //   photo, scoring, editable, onScoringChange
 //   frame: quadrilatero {tl,tr,bl,br} (ou retangulo legado) da area de analise
@@ -13,6 +23,7 @@ const HIT_RING_COLORS = {
   bull: '#10b981', r5: '#3b82f6', r4: '#f59e0b', r3: '#ef4444', fora: '#9ca3af', na: '#9ca3af',
 }
 const CORNER_IDS = ['tl', 'tr', 'bl', 'br']
+const QUAD_LETTERS = { amarelo: 'A', verde: 'V', vermelho: 'R', azul: 'B' }
 
 export default function TargetOverlay({
   photo, scoring, editable = false, onScoringChange,
@@ -20,13 +31,16 @@ export default function TargetOverlay({
 }) {
   const imgRef = useRef(null)
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
-  const [hoveredHit, setHoveredHit] = useState(null)
   const [drag, setDrag] = useState(null)
   const [frameDrag, setFrameDrag] = useState(null) // { corner, quad } durante o arraste
+  const [selected, setSelected] = useState(null)   // { quadrant, idx } da marca selecionada
+  const [zoomKey, setZoomKey] = useState(null)     // null = alvo inteiro, senao chave do padrao
   const draggedRef = useRef(false)
   const dragStartRef = useRef(null)
 
   const pointToFraction = (e) => {
+    // getBoundingClientRect ja reflete o transform do zoom, entao a fracao
+    // continua certa com qualquer escala.
     const rect = imgRef.current.getBoundingClientRect()
     return {
       x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
@@ -41,6 +55,14 @@ export default function TargetOverlay({
     return () => window.removeEventListener('resize', update)
   }, [photo])
 
+  // Scoring mudou (add/move/remove/rescore): qualquer selecao antiga e invalida.
+  useEffect(() => { setSelected(null) }, [scoring])
+
+  // Saiu do modo edicao: reseta zoom e selecao.
+  useEffect(() => {
+    if (!editable) { setZoomKey(null); setSelected(null) }
+  }, [editable])
+
   if (!photo) return null
 
   const effQuad = frameDrag ? frameDrag.quad : frameToQuad(frame || DEFAULT_FRAME)
@@ -51,6 +73,11 @@ export default function TargetOverlay({
     if (!qData) continue
     qData.hits.forEach((h, idx) => { allHits.push({ ...h, quadrant: q, idx }) })
   }
+
+  const hitLabel = (quadrant, idx) => `${QUAD_LETTERS[quadrant] || '?'}${idx + 1}`
+  const selHit = selected
+    ? allHits.find((h) => h.quadrant === selected.quadrant && h.idx === selected.idx) || null
+    : null
 
   const editAndRescore = (mutate) => {
     const next = { ...scoring, quadrantes: {} }
@@ -65,6 +92,9 @@ export default function TargetOverlay({
   const handleImageClick = (e) => {
     if (!editable || !imgRef.current) return
     if (draggedRef.current) { draggedRef.current = false; return }
+    // Com marca selecionada, o toque fora so desseleciona (nao adiciona furo
+    // sem querer enquanto a pessoa esta mexendo numa marca).
+    if (selected) { setSelected(null); return }
     const { x, y } = pointToFraction(e)
     editAndRescore((next) => {
       const first = QUADRANT_NAMES.find((q) => next.quadrantes[q]) || 'amarelo'
@@ -80,6 +110,11 @@ export default function TargetOverlay({
     })
   }
 
+  const removeSelected = () => {
+    if (!selected) return
+    removeHit(selected.quadrant, selected.idx)
+  }
+
   // ---- arraste de marca ----
   const onMarkerDown = (e, quadrant, idx, hit) => {
     if (!editable) return
@@ -88,7 +123,6 @@ export default function TargetOverlay({
     draggedRef.current = false
     dragStartRef.current = { x: hit.x, y: hit.y }
     setDrag({ quadrant, idx, x: hit.x, y: hit.y })
-    setHoveredHit(null)
   }
   const onMarkerMove = (e) => {
     if (!drag) return
@@ -112,7 +146,9 @@ export default function TargetOverlay({
       })
       setTimeout(() => { draggedRef.current = false }, 0)
     } else {
-      removeHit(quadrant, idx)
+      // Toque sem arrastar: seleciona/desseleciona (NAO apaga direto).
+      setSelected((prev) =>
+        prev && prev.quadrant === quadrant && prev.idx === idx ? null : { quadrant, idx })
     }
   }
 
@@ -151,104 +187,187 @@ export default function TargetOverlay({
     return { q, ...c }
   }).filter(Boolean)
 
+  // ---- zoom por quadrante ----
+  // Transform CSS no bloco foto+svg. Como o transform e afim, pointToFraction
+  // e os arrastes continuam funcionando sem conversao extra.
+  const ZOOM_SCALE = previewPatterns.length > 1 ? 2.2 : 2
+  const zoomPattern = zoomKey ? previewPatterns.find((p) => p.q === zoomKey) : null
+  let zoomStyle = { transform: 'none', transformOrigin: '0 0', transition: 'transform 0.25s ease' }
+  if (zoomPattern && imgSize.w > 0) {
+    const s = ZOOM_SCALE
+    const cx = zoomPattern.bull_center.x, cy = zoomPattern.bull_center.y
+    let tx = imgSize.w * (0.5 - s * cx)
+    let ty = imgSize.h * (0.5 - s * cy)
+    tx = Math.min(0, Math.max(imgSize.w * (1 - s), tx))
+    ty = Math.min(0, Math.max(imgSize.h * (1 - s), ty))
+    zoomStyle = { transform: `translate(${tx}px, ${ty}px) scale(${s})`, transformOrigin: '0 0', transition: 'transform 0.25s ease' }
+  }
+
   const P = (pt) => ({ x: pt.x * imgSize.w, y: pt.y * imgSize.h })
   const tl = P(effQuad.tl), tr = P(effQuad.tr), bl = P(effQuad.bl), br = P(effQuad.br)
   const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
 
   return (
     <div className="space-y-2">
-      <div className="relative inline-block w-full select-none" style={{ touchAction: 'manipulation' }}>
-        <img
-          ref={imgRef}
-          src={photo}
-          alt="Alvo"
-          className="w-full rounded-md block"
-          onClick={handleImageClick}
-          onLoad={() => { if (imgRef.current) setImgSize({ w: imgRef.current.clientWidth, h: imgRef.current.clientHeight }) }}
-          style={editable ? { cursor: 'crosshair' } : {}}
-        />
+      {editable && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">zoom</span>
+          <button
+            type="button"
+            onClick={() => setZoomKey(null)}
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition ${
+              !zoomKey ? 'bg-navy text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            }`}
+          >
+            alvo inteiro
+          </button>
+          {previewPatterns.map((p) => (
+            <button
+              key={p.q}
+              type="button"
+              onClick={() => { setZoomKey(p.q); setSelected(null) }}
+              className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition ${
+                zoomKey === p.q ? 'bg-navy text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+              }`}
+            >
+              {previewPatterns.length > 1 ? p.q : 'centro'}
+            </button>
+          ))}
+        </div>
+      )}
 
-        {imgSize.w > 0 && (
-          <svg className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox={`0 0 ${imgSize.w} ${imgSize.h}`} preserveAspectRatio="none">
+      <div className="relative w-full overflow-hidden rounded-md select-none" style={{ touchAction: 'manipulation' }}>
+        <div className="relative" style={zoomStyle}>
+          <img
+            ref={imgRef}
+            src={photo}
+            alt="Alvo"
+            className="w-full block"
+            onClick={handleImageClick}
+            onLoad={() => { if (imgRef.current) setImgSize({ w: imgRef.current.clientWidth, h: imgRef.current.clientHeight }) }}
+            style={editable ? { cursor: 'crosshair' } : {}}
+          />
 
-            {frameEditable && (
-              <g>
-                <polygon
-                  points={`${tl.x},${tl.y} ${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}`}
-                  fill="none" stroke="#facc15" strokeWidth={2} strokeDasharray="6 4" opacity={0.95} />
-                {target.patterns.length > 1 && (
-                  <g stroke="rgba(250,204,21,0.5)" strokeWidth={1} strokeDasharray="4 4">
-                    <line x1={mid(tl, tr).x} y1={mid(tl, tr).y} x2={mid(bl, br).x} y2={mid(bl, br).y} />
-                    <line x1={mid(tl, bl).x} y1={mid(tl, bl).y} x2={mid(tr, br).x} y2={mid(tr, br).y} />
+          {imgSize.w > 0 && (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox={`0 0 ${imgSize.w} ${imgSize.h}`} preserveAspectRatio="none">
+
+              {frameEditable && (
+                <g>
+                  <polygon
+                    points={`${tl.x},${tl.y} ${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}`}
+                    fill="none" stroke="#facc15" strokeWidth={2} strokeDasharray="6 4" opacity={0.95} />
+                  {target.patterns.length > 1 && (
+                    <g stroke="rgba(250,204,21,0.5)" strokeWidth={1} strokeDasharray="4 4">
+                      <line x1={mid(tl, tr).x} y1={mid(tl, tr).y} x2={mid(bl, br).x} y2={mid(bl, br).y} />
+                      <line x1={mid(tl, bl).x} y1={mid(tl, bl).y} x2={mid(tr, br).x} y2={mid(tr, br).y} />
+                    </g>
+                  )}
+                  {previewPatterns.map((p, i) => {
+                    const cx = p.bull_center.x * imgSize.w
+                    const cy = p.bull_center.y * imgSize.h
+                    const rings = [p.ring3_radius, p.ring4_radius, p.ring5_radius].filter((r) => r > 0)
+                    return (
+                      <g key={`pv${i}`}>
+                        {rings.map((r, j) => (
+                          <circle key={j} cx={cx} cy={cy} r={r * imgSize.w}
+                            fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth={1} strokeDasharray="2 3" />
+                        ))}
+                        <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth={1} />
+                      </g>
+                    )
+                  })}
+                </g>
+              )}
+
+              {allHits.map((hit, i) => {
+                const isDragging = drag && drag.quadrant === hit.quadrant && drag.idx === hit.idx
+                const isSelected = selected && selected.quadrant === hit.quadrant && selected.idx === hit.idx
+                const hx = isDragging ? drag.x : hit.x
+                const hy = isDragging ? drag.y : hit.y
+                const cx = hx * imgSize.w, cy = hy * imgSize.h
+                const ringColor = HIT_RING_COLORS[hit.zone] || '#9ca3af'
+                const label = hitLabel(hit.quadrant, hit.idx)
+                const active = isSelected || isDragging
+                return (
+                  <g key={i}>
+                    {/* marca pequena: circulinho fino + etiqueta, sem cobrir o furo */}
+                    <circle cx={cx} cy={cy} r={active ? 9 : 7} fill="none"
+                      stroke={ringColor} strokeWidth={active ? 2.4 : 1.7} opacity={0.95} />
+                    {active && (
+                      <circle cx={cx} cy={cy} r={14} fill="none" stroke={ringColor}
+                        strokeWidth={1} strokeDasharray="3 3" opacity={0.85} />
+                    )}
+                    <text x={cx + 10} y={cy + 3} fontSize="9" fontWeight="700" fill={ringColor}
+                      stroke="rgba(255,255,255,0.85)" strokeWidth={2.5} paintOrder="stroke"
+                      fontFamily="JetBrains Mono, monospace">
+                      {label}
+                    </text>
+                    {editable && (
+                      <circle cx={cx} cy={cy} r={16} fill="transparent"
+                        style={{ pointerEvents: 'auto', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+                        onPointerDown={(e) => onMarkerDown(e, hit.quadrant, hit.idx, hit)}
+                        onPointerMove={onMarkerMove}
+                        onPointerUp={(e) => onMarkerUp(e, hit.quadrant, hit.idx)} />
+                    )}
+                    {editable && isSelected && !isDragging && (
+                      <g
+                        style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); removeSelected() }}
+                      >
+                        <circle cx={cx + 20} cy={cy - 20} r={14} fill="transparent" />
+                        <circle cx={cx + 20} cy={cy - 20} r={9} fill="#dc2626" stroke="white" strokeWidth={1.5} />
+                        <line x1={cx + 16.5} y1={cy - 23.5} x2={cx + 23.5} y2={cy - 16.5} stroke="white" strokeWidth={1.8} />
+                        <line x1={cx + 23.5} y1={cy - 23.5} x2={cx + 16.5} y2={cy - 16.5} stroke="white" strokeWidth={1.8} />
+                      </g>
+                    )}
                   </g>
-                )}
-                {previewPatterns.map((p, i) => {
-                  const cx = p.bull_center.x * imgSize.w
-                  const cy = p.bull_center.y * imgSize.h
-                  const rings = [p.ring3_radius, p.ring4_radius, p.ring5_radius].filter((r) => r > 0)
-                  return (
-                    <g key={`pv${i}`}>
-                      {rings.map((r, j) => (
-                        <circle key={j} cx={cx} cy={cy} r={r * imgSize.w}
-                          fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth={1} strokeDasharray="2 3" />
-                      ))}
-                      <circle cx={cx} cy={cy} r={3} fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth={1} />
-                    </g>
-                  )
-                })}
-              </g>
-            )}
+                )
+              })}
 
-            {allHits.map((hit, i) => {
-              const isDragging = drag && drag.quadrant === hit.quadrant && drag.idx === hit.idx
-              const hx = isDragging ? drag.x : hit.x
-              const hy = isDragging ? drag.y : hit.y
-              const cx = hx * imgSize.w, cy = hy * imgSize.h
-              const isHovered = hoveredHit?.q === hit.quadrant && hoveredHit?.idx === hit.idx
-              const ringColor = HIT_RING_COLORS[hit.zone] || '#9ca3af'
-              const big = isHovered || isDragging
-              return (
-                <g key={i}>
-                  <circle cx={cx} cy={cy} r={big ? 22 : 14} fill="none" stroke={ringColor} strokeWidth={2.5} opacity={0.9} />
-                  <circle cx={cx} cy={cy} r={big ? 6 : 4} fill={ringColor} />
-                  {(isHovered || isDragging) && (
-                    <g>
-                      <rect x={cx + 12} y={cy - 24} width={86} height={20} rx={3} fill="rgba(0,0,0,0.9)" />
-                      <text x={cx + 55} y={cy - 10} fontSize="11" fill="white" textAnchor="middle" fontFamily="JetBrains Mono, monospace">
-                        {labelForZone(hit.zone)}{hit.zone === 'na' ? '' : ` · ${hit.points}pt`}
-                      </text>
-                    </g>
-                  )}
-                  {editable && (
-                    <circle cx={cx} cy={cy} r={20} fill="transparent"
-                      style={{ pointerEvents: 'auto', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
-                      onPointerDown={(e) => onMarkerDown(e, hit.quadrant, hit.idx, hit)}
-                      onPointerMove={onMarkerMove}
-                      onPointerUp={(e) => onMarkerUp(e, hit.quadrant, hit.idx)}
-                      onMouseEnter={() => !drag && setHoveredHit({ q: hit.quadrant, idx: hit.idx })}
-                      onMouseLeave={() => setHoveredHit(null)} />
-                  )}
-                </g>
-              )
-            })}
-
-            {frameEditable && CORNER_IDS.map((id) => {
-              const c = P(effQuad[id])
-              return (
-                <g key={id}>
-                  <circle cx={c.x} cy={c.y} r={7} fill="#facc15" stroke="#1f2937" strokeWidth={1.5} />
-                  <circle cx={c.x} cy={c.y} r={24} fill="transparent"
-                    style={{ pointerEvents: 'auto', cursor: 'grab', touchAction: 'none' }}
-                    onPointerDown={(e) => onCornerDown(e, id)}
-                    onPointerMove={onCornerMove}
-                    onPointerUp={onCornerUp} />
-                </g>
-              )
-            })}
-          </svg>
-        )}
+              {frameEditable && CORNER_IDS.map((id) => {
+                const c = P(effQuad[id])
+                return (
+                  <g key={id}>
+                    <circle cx={c.x} cy={c.y} r={7} fill="#facc15" stroke="#1f2937" strokeWidth={1.5} />
+                    <circle cx={c.x} cy={c.y} r={24} fill="transparent"
+                      style={{ pointerEvents: 'auto', cursor: 'grab', touchAction: 'none' }}
+                      onPointerDown={(e) => onCornerDown(e, id)}
+                      onPointerMove={onCornerMove}
+                      onPointerUp={onCornerUp} />
+                  </g>
+                )
+              })}
+            </svg>
+          )}
+        </div>
       </div>
+
+      {editable && selHit && (
+        <div className="flex items-center justify-between bg-stone-50 border border-stone-200 rounded-md px-3 py-2">
+          <span className="text-xs text-stone-700 font-semibold">
+            {hitLabel(selHit.quadrant, selHit.idx)} · {labelForZone(selHit.zone)}
+            {selHit.zone === 'na' ? '' : ` · ${selHit.points}pt`}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="px-3 py-1.5 text-xs font-semibold rounded-md bg-stone-100 text-stone-600 hover:bg-stone-200 transition"
+            >
+              cancelar
+            </button>
+            <button
+              type="button"
+              onClick={removeSelected}
+              className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-600 text-white hover:bg-red-700 transition"
+            >
+              remover
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-stone-500 px-1">
         <span className="font-semibold text-stone-700">
@@ -269,8 +388,8 @@ export default function TargetOverlay({
       {editable && (
         <div className="text-[10px] text-stone-500 px-1 leading-relaxed">
           {frameEditable
-            ? 'Arraste cada canto amarelo livremente pra encaixar o quadro no alvo (serve pra alvo torto/empenado): os anéis acompanham. Depois "redetectar no quadro" ou marque na mão. Arraste uma marca pra ajustar, toque pra remover, toque fora pra adicionar.'
-            : 'Arraste uma marca pra ajustá-la sobre o furo. Toque numa marca pra remover. Toque em outro lugar pra adicionar. A pontuação recalcula a cada ajuste.'}
+            ? 'Use o zoom pra trabalhar num quadrante. Toque numa marca pra selecionar e remover, arraste pra ajustar, toque em área vazia pra adicionar. Os cantos amarelos ajustam o quadro (alvo torto/empenado) e os anéis acompanham; depois "redetectar no quadro" se quiser.'
+            : 'Use o zoom pra trabalhar num quadrante. Toque numa marca pra selecionar e remover. Arraste pra ajustar. Toque em área vazia pra adicionar. A pontuação recalcula a cada ajuste.'}
         </div>
       )}
     </div>
