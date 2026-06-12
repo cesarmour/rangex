@@ -210,8 +210,47 @@ function CadastroCR({ profile, onSave, onCancel }) {
   const [crData, setCrData] = useState(profile?.cr_data || '')
   const [nivel, setNivel] = useState(profile?.nivel_habitualidade || '1')
   const [endereco, setEndereco] = useState(profile?.endereco_habitualidade || '')
+  const [cep, setCep] = useState('')
+  const [numeroEnd, setNumeroEnd] = useState('')
+  const [buscandoCep, setBuscandoCep] = useState(false)
+  const [cepErr, setCepErr] = useState(null)
+  const viaCepRef = useRef(null)
+  const [filiacaoNumero, setFiliacaoNumero] = useState(profile?.filiacao_numero || '8062') // padrao G16
+  const [filiacaoData, setFiliacaoData] = useState(profile?.filiacao_data || '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
+
+  const composeEndereco = (j, numero) => [
+    `${j.logradouro || ''}${numero ? `, ${numero}` : ''}`.trim(),
+    j.bairro,
+    `CEP ${j.cep}`,
+    `${j.localidade} - ${j.uf}`,
+  ].filter(Boolean).join(', ')
+
+  // Busca o endereco completo pelo CEP (ViaCEP) quando fecha 8 digitos
+  useEffect(() => {
+    const d = cep.replace(/\D/g, '')
+    if (d.length !== 8) return
+    let cancelled = false
+    setBuscandoCep(true)
+    setCepErr(null)
+    fetch(`https://viacep.com.br/ws/${d}/json/`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return
+        if (j.erro) { setCepErr('CEP não encontrado.'); return }
+        viaCepRef.current = j
+        setEndereco(composeEndereco(j, numeroEnd))
+      })
+      .catch(() => { if (!cancelled) setCepErr('Falha ao buscar o CEP. Preencha o endereço na mão.') })
+      .finally(() => { if (!cancelled) setBuscandoCep(false) })
+    return () => { cancelled = true }
+  }, [cep])
+
+  // Numero digitado depois do CEP: recompoe
+  useEffect(() => {
+    if (viaCepRef.current) setEndereco(composeEndereco(viaCepRef.current, numeroEnd))
+  }, [numeroEnd])
 
   const save = async () => {
     const cpfDigits = cpf.replace(/\D/g, '')
@@ -229,6 +268,8 @@ function CadastroCR({ profile, onSave, onCancel }) {
         cr_data: crData || null,
         nivel_habitualidade: nivel,
         endereco_habitualidade: endereco.trim(),
+        filiacao_numero: filiacaoNumero.trim() || null,
+        filiacao_data: filiacaoData || null,
       })
     } catch (e) {
       setErr(e.message || 'Erro ao salvar')
@@ -272,10 +313,36 @@ function CadastroCR({ profile, onSave, onCancel }) {
           </select>
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="min-w-0">
+          <div className="label mb-1.5">CEP</div>
+          <input className="input" inputMode="numeric" value={cep} onChange={(e) => setCep(e.target.value)}
+            placeholder="00000-000" />
+        </div>
+        <div className="min-w-0">
+          <div className="label mb-1.5">Número</div>
+          <input className="input" value={numeroEnd} onChange={(e) => setNumeroEnd(e.target.value)} placeholder="ex: 246" />
+        </div>
+      </div>
+      {(buscandoCep || cepErr) && (
+        <div className={`text-[11px] -mt-1 ${cepErr ? 'text-amber-700' : 'text-stone-500'}`}>
+          {buscandoCep ? 'buscando endereço…' : cepErr}
+        </div>
+      )}
       <div>
         <div className="label mb-1.5">Endereço</div>
         <input className="input" value={endereco} onChange={(e) => setEndereco(e.target.value)}
-          placeholder="Rua, nº, bairro, CEP, cidade - UF" />
+          placeholder="preenchido pelo CEP (dá pra ajustar)" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="min-w-0">
+          <div className="label mb-1.5">Filiação (nº)</div>
+          <input className="input" value={filiacaoNumero} onChange={(e) => setFiliacaoNumero(e.target.value)} placeholder="8062" />
+        </div>
+        <div className="min-w-0">
+          <div className="label mb-1.5">Data (opcional)</div>
+          <DateField value={filiacaoData} onChange={(e) => setFiliacaoData(e.target.value)} />
+        </div>
       </div>
       {err && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md p-2">{err}</div>}
       <div className={`grid ${onCancel ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
@@ -540,6 +607,8 @@ function AnexoEBox({ sessions, profile, config }) {
           crData: profile?.cr_data,
           nivel: profile?.nivel_habitualidade || '1',
           endereco: profile?.endereco_habitualidade || '',
+          filiacaoNumero: profile?.filiacao_numero || '8062',
+          filiacaoData: profile?.filiacao_data || null,
         },
         config,
         periodo: { inicio: `${inicio}T00:00:00`, fim: `${fim}T00:00:00` },
