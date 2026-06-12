@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { CALIBRES } from '../lib/defaults.js'
-import { getAcervoPhotoUrl, uploadAcervoPhoto, deleteAcervoPhoto } from '../lib/db.js'
+import { getAcervoPhotoUrl, uploadAcervoPhoto, deleteAcervoPhoto, searchArmas } from '../lib/db.js'
 
 function computeArmaStats(trainings, arma) {
   let totalDisparos = 0
@@ -73,6 +73,7 @@ export default function AcervoScreen({
   onRemoveAcervo,
 }) {
   const [editing, setEditing] = useState(null)
+  const [adding, setAdding] = useState(false)
   const [expanded, setExpanded] = useState(null)
   const [photoUrls, setPhotoUrls] = useState({}) // armaId -> signed URL
   const [uploadingId, setUploadingId] = useState(null)
@@ -336,12 +337,24 @@ export default function AcervoScreen({
         })}
       </div>
 
+      {!adding && (
       <button
-        onClick={onAddAcervo}
+        onClick={() => setAdding(true)}
         className="w-full px-4 py-3 bg-white border-2 border-dashed border-stone-300 hover:border-navy hover:bg-stone-50 text-sm font-semibold text-stone-600 rounded-md transition"
       >
         + adicionar nova arma
       </button>
+      )}
+
+      {adding && (
+        <NewArmaForm
+          onCancel={() => setAdding(false)}
+          onSave={async (data) => {
+            await onAddAcervo(data)
+            setAdding(false)
+          }}
+        />
+      )}
 
       {acervo.length === 0 && (
         <div className="text-center py-8 text-stone-400">
@@ -469,5 +482,74 @@ function Spinner() {
       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" />
       <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
+  )
+}
+
+// Form de nova arma: nome + calibre preenchidos ANTES de salvar (a arma nao
+// entra mais vazia/"9mm" perdida na lista). Busca no catalogo global pra
+// autocompletar modelos ja cadastrados por outros usuarios.
+function NewArmaForm({ onCancel, onSave }) {
+  const [nome, setNome] = useState('')
+  const [calibre, setCalibre] = useState(CALIBRES[0] || '9mm Luger')
+  const [sugestoes, setSugestoes] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  useEffect(() => {
+    if (nome.trim().length < 2) { setSugestoes([]); return }
+    const t = setTimeout(async () => {
+      try { setSugestoes(await searchArmas(nome.trim())) } catch { setSugestoes([]) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [nome])
+
+  const save = async () => {
+    if (!nome.trim()) { setErr('Dê um nome pra arma.'); return }
+    setErr(null)
+    setSaving(true)
+    try {
+      await onSave({ arma: nome.trim(), calibre })
+    } catch (e) {
+      setErr(e.message || 'Erro ao salvar')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="text-xs font-semibold text-navy">Nova arma</div>
+      <div>
+        <div className="label mb-1.5">Modelo</div>
+        <input className="input" autoFocus value={nome} onChange={(e) => setNome(e.target.value)}
+          placeholder="ex: Glock G17 Gen5" />
+        {sugestoes.length > 0 && (
+          <div className="mt-1 border border-stone-200 rounded-md divide-y divide-stone-100 bg-white overflow-hidden">
+            {sugestoes.slice(0, 5).map((sug, i) => (
+              <button key={i} type="button"
+                onClick={() => { setNome(sug.arma); setCalibre(sug.calibre); setSugestoes([]) }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-stone-50 flex items-center justify-between">
+                <span className="font-semibold text-stone-700">{sug.arma} · {sug.calibre}</span>
+                <span className="text-[10px] text-stone-400">{sug.usuarios} atirador{sug.usuarios > 1 ? 'es' : ''}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <div className="label mb-1.5">Calibre</div>
+        <select className="input" value={calibre} onChange={(e) => setCalibre(e.target.value)}>
+          {!CALIBRES.includes(calibre) && <option value={calibre}>{calibre}</option>}
+          {CALIBRES.map((c) => (<option key={c} value={c}>{c}</option>))}
+        </select>
+      </div>
+      {err && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md p-2">{err}</div>}
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={onCancel} className="px-3 py-2.5 text-xs font-semibold rounded-md bg-stone-100 text-stone-600 hover:bg-stone-200 transition">cancelar</button>
+        <button onClick={save} disabled={saving}
+          className="px-3 py-2.5 text-xs font-semibold rounded-md bg-navy text-white border-b-2 border-gold disabled:opacity-50 transition">
+          {saving ? 'salvando…' : 'salvar no acervo'}
+        </button>
+      </div>
+    </div>
   )
 }

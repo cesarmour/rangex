@@ -501,7 +501,7 @@ function ChampionshipCard({ champ, userId, expanded, onToggle, onChanged }) {
               ) : (
                 <span className="text-amber-700 font-semibold">aguardando árbitro aceitar convite</span>
               )}
-              {(champ.iAmJudge || champ.iAmOrganizer) && champ.pendingCount > 0 && (
+              {(champ.iAmJudge || champ.iAmOrganizer || champ.iAmAdmin) && champ.pendingCount > 0 && (
                 <span className="text-amber-700 font-semibold">· {champ.pendingCount} pra auditar</span>
               )}
             </div>
@@ -586,7 +586,7 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
       {err && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md p-2">{err}</div>}
 
       {/* Organizador sem árbitro: o proximo passo e o convite */}
-      {champ.iAmOrganizer && !champ.judgeId && champ.judgeInviteToken && (
+      {(champ.iAmOrganizer || champ.iAmAdmin) && !champ.judgeId && champ.judgeInviteToken && (
         <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
           <div className="text-[11px] text-amber-800 leading-relaxed">
             <strong>Falta o Árbitro/RO.</strong> Sem ele ninguém audita e nenhuma pontuação entra no ranking. Mande o convite:
@@ -669,8 +669,8 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
         </div>
       )}
 
-      {/* Auditoria do árbitro */}
-      {champ.iAmJudge && (
+      {/* Auditoria do árbitro (ou admin) */}
+      {(champ.iAmJudge || champ.iAmAdmin) && (
         <div>
           <div className="label mb-1.5 flex items-center gap-1.5">Auditoria <JudgeBadge /></div>
           {!open && (
@@ -705,7 +705,7 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
         </div>
       )}
 
-      {champ.iAmOrganizer && champ.status === 'open' && (
+      {(champ.iAmOrganizer || champ.iAmAdmin) && champ.status === 'open' && (
         <button onClick={handleClose}
           className="px-3 py-2 text-xs font-semibold rounded-md bg-stone-100 text-red-600 hover:bg-red-50 transition">
           encerrar campeonato

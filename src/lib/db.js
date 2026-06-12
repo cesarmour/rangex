@@ -388,6 +388,16 @@ export async function deleteAcervoPhoto(path) {
   await supabase.storage.from('acervo-photos').remove([path])
 }
 
+// ============ CATALOGO GLOBAL DE ARMAS ============
+
+// Modelos arma+calibre ja cadastrados por qualquer usuario (anonimo).
+export async function searchArmas(query = '') {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('search_armas', { p_query: query || '' })
+  if (error) throw error
+  return (data || []).map((r) => ({ arma: r.arma, calibre: r.calibre, usuarios: Number(r.usuarios || 0) }))
+}
+
 // ============ CAMPEONATOS ============
 
 function rowToChampionship(row) {
@@ -411,6 +421,7 @@ function rowToChampionship(row) {
     judgeName: row.judge_name,
     iAmOrganizer: row.i_am_organizer,
     iAmJudge: row.i_am_judge,
+    iAmAdmin: row.i_am_admin || false,
     judgeInviteToken: row.judge_invite_token,
     mySubmissions: Number(row.my_submissions || 0),
     pendingCount: Number(row.pending_count || 0),

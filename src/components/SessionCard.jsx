@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import PhotoInput from './PhotoInput.jsx'
 import TargetOverlay from './TargetOverlay.jsx'
 import { analyzeTarget, diagnoseShooting, scoreWithFrame, detectAndScore } from '../lib/analyze.js'
 import { targetList, DEFAULT_TARGET, DEFAULT_FRAME } from '../lib/targets.js'
+import { searchArmas } from '../lib/db.js'
 
 const QKEYS = ['amarelo', 'verde', 'vermelho', 'azul']
 
@@ -213,12 +214,12 @@ export default function SessionCard({ session, index, acervo, onChange, onRemove
         <div className="p-4 space-y-4">
           <div>
             <div className="label mb-1.5">Arma</div>
-            <select className="input" value={session.armaId || ''} onChange={(e) => updateArma(e.target.value)}>
-              <option value="">Selecione…</option>
-              {acervo.map((a) => (
-                <option key={a.id} value={a.id}>{a.arma}  ·  {a.calibre}</option>
-              ))}
-            </select>
+            <ArmaPicker
+              acervo={acervo}
+              session={session}
+              onPickAcervo={(id) => updateArma(id)}
+              onPickCatalog={({ arma, calibre }) => update({ armaId: '', arma, calibre })}
+            />
           </div>
 
           <div>
@@ -392,5 +393,86 @@ function Spinner() {
       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" />
       <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
+  )
+}
+
+// Selecao de arma com BUSCA (sem menu de lista): procura no acervo proprio e
+// no catalogo global (modelos cadastrados por qualquer usuario, anonimo).
+// Escolher do catalogo usa a arma SO nesta sessao (treino esporadico), sem
+// entrar no acervo.
+function ArmaPicker({ acervo, session, onPickAcervo, onPickCatalog }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [catalogo, setCatalogo] = useState([])
+  const [searching, setSearching] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    const t = setTimeout(async () => {
+      setSearching(true)
+      try { setCatalogo(await searchArmas(q.trim())) } catch { setCatalogo([]) } finally { setSearching(false) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [q, open])
+
+  const ql = q.trim().toLowerCase()
+  const own = acervo.filter((a) => !ql || `${a.arma} ${a.calibre}`.toLowerCase().includes(ql))
+  const ownKeys = new Set(acervo.map((a) => `${a.arma}|${a.calibre}`))
+  const externos = catalogo.filter((c) => !ownKeys.has(`${c.arma}|${c.calibre}`))
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => { setOpen(true); setQ('') }}
+        className="input text-left flex items-center justify-between gap-2">
+        <span className={session.arma ? 'text-stone-800' : 'text-stone-400'}>
+          {session.arma ? `${session.arma}  ·  ${session.calibre}` : 'buscar arma…'}
+        </span>
+        <span className="text-stone-400 text-xs shrink-0">⌕</span>
+      </button>
+    )
+  }
+
+  return (
+    <div className="border border-stone-200 rounded-md bg-white">
+      <div className="p-2 border-b border-stone-100 flex items-center gap-2">
+        <input className="input" autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="modelo ou calibre…" />
+        <button type="button" onClick={() => setOpen(false)}
+          className="text-xs text-stone-500 px-2 shrink-0">fechar</button>
+      </div>
+      <div className="max-h-64 overflow-y-auto divide-y divide-stone-100">
+        {own.length > 0 && (
+          <div>
+            <div className="px-3 pt-2 pb-1 text-[9px] tracking-[0.14em] uppercase text-stone-400 font-semibold">Meu acervo</div>
+            {own.map((a) => (
+              <button key={a.id} type="button"
+                onClick={() => { onPickAcervo(a.id); setOpen(false) }}
+                className="w-full text-left px-3 py-2.5 text-xs hover:bg-stone-50 font-semibold text-stone-700">
+                {a.arma}  ·  {a.calibre}
+              </button>
+            ))}
+          </div>
+        )}
+        <div>
+          <div className="px-3 pt-2 pb-1 text-[9px] tracking-[0.14em] uppercase text-stone-400 font-semibold">
+            Catálogo (treino esporádico){searching ? ' · buscando…' : ''}
+          </div>
+          {externos.length === 0 && !searching && (
+            <div className="px-3 py-2 text-[11px] text-stone-400">nada encontrado{ql ? ` pra "${q.trim()}"` : ''}</div>
+          )}
+          {externos.map((c, i) => (
+            <button key={i} type="button"
+              onClick={() => { onPickCatalog(c); setOpen(false) }}
+              className="w-full text-left px-3 py-2.5 text-xs hover:bg-stone-50 flex items-center justify-between">
+              <span className="font-semibold text-stone-700">{c.arma}  ·  {c.calibre}</span>
+              <span className="text-[10px] text-stone-400 shrink-0">{c.usuarios} atirador{c.usuarios > 1 ? 'es' : ''}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="px-3 py-2 text-[10px] text-stone-400 border-t border-stone-100 leading-relaxed">
+        Do catálogo a arma vale só nesta sessão. Pra ficar permanente, cadastre na aba Acervo.
+      </div>
+    </div>
   )
 }

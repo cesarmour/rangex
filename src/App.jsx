@@ -10,6 +10,7 @@ import RankingScreen from './components/RankingScreen.jsx'
 import AcervoScreen from './components/AcervoScreen.jsx'
 import ChallengeScreen from './components/ChallengeScreen.jsx'
 import ChampionshipScreen from './components/ChampionshipScreen.jsx'
+import HomeScreen from './components/HomeScreen.jsx'
 import { DEFAULT_ACERVO, DEFAULT_PRECOS, DEFAULT_SETTINGS } from './lib/defaults.js'
 import { isConfigured } from './lib/supabase.js'
 import { getSession, onAuthChange, signOut } from './lib/auth.js'
@@ -60,6 +61,7 @@ function fromDateTimeLocal(value) {
 }
 
 const TABS = [
+  { id: 'inicio', label: 'Início' },
   { id: 'treino', label: 'Treino' },
   { id: 'acervo', label: 'Acervo' },
   { id: 'challenge', label: 'Duelo' },
@@ -91,7 +93,7 @@ export default function App() {
   const [batchAnalyzing, setBatchAnalyzing] = useState(false)
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 })
   const [batchErrors, setBatchErrors] = useState([])
-  const [activeTab, setActiveTab] = useState('treino')
+  const [activeTab, setActiveTab] = useState('inicio')
 
   useEffect(() => {
     if (!isConfigured) {
@@ -127,7 +129,7 @@ export default function App() {
         setClub(null)
         setHydrated(false)
         hydratedUserIdRef.current = null
-        setActiveTab('treino')
+        setActiveTab('inicio')
       }
     })
     return unsub
@@ -335,10 +337,11 @@ export default function App() {
     totalPagar += qty * (precos[cal] ?? 0)
   }
 
-  const handleAddAcervo = async () => {
+  const handleAddAcervo = async ({ arma = '', calibre = '9mm Luger' } = {}) => {
     try {
-      const newItem = await addAcervo(user.id, { arma: '', calibre: '9mm Luger', sortOrder: acervo.length })
+      const newItem = await addAcervo(user.id, { arma, calibre, sortOrder: acervo.length })
       setAcervo([...acervo, newItem])
+      return newItem
     } catch (e) { alert('Erro ao adicionar: ' + e.message) }
   }
 
@@ -527,6 +530,15 @@ export default function App() {
       )}
 
       {/* Tab content */}
+      {activeTab === 'inicio' && (
+        <HomeScreen
+          trainings={trainings}
+          profile={profile}
+          userInfo={userInfo}
+          club={club}
+          onNavigate={(t) => { setActiveTab(t); window.scrollTo(0, 0) }}
+        />
+      )}
       {activeTab === 'treino' && (
         <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
           <div className="card p-4">
@@ -759,6 +771,15 @@ export default function App() {
 // Icones das abas: stroke simples, herdam currentColor do botao.
 function TabIcon({ id }) {
   const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  if (id === 'inicio') {
+    return (
+      <svg {...common}>
+        <path d="M3 11l9-7 9 7" />
+        <path d="M5 9.5V20h14V9.5" />
+        <path d="M10 20v-5h4v5" />
+      </svg>
+    )
+  }
   if (id === 'treino') {
     return (
       <svg {...common}>
