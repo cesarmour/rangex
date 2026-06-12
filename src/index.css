@@ -29,6 +29,22 @@
       focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy/40
       placeholder:text-stone-400;
   }
+
+  /* iOS da largura/altura intrinseca pra inputs de data e ignora w-full.
+     Matar a aparencia nativa faz ele respeitar o grid igual aos outros .input. */
+  input[type='date'].input,
+  input[type='datetime-local'].input {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 2.75rem;
+  }
+  input[type='date'].input::-webkit-date-and-time-value,
+  input[type='datetime-local'].input::-webkit-date-and-time-value {
+    text-align: left;
+  }
   .btn-primary {
     @apply w-full px-4 py-3.5 bg-navy text-white text-sm font-semibold tracking-wide
       rounded-md hover:bg-navy-700 transition active:scale-[0.98]
