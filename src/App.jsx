@@ -210,7 +210,7 @@ export default function App() {
 
   const [judgeInviteMsg, setJudgeInviteMsg] = useState(null)
 
-  // Deep link do convite de Juiz de Prova/IAT (?juiz=TOKEN, enviado por WhatsApp).
+  // Deep link do convite de Árbitro/RO (?juiz=TOKEN, enviado por WhatsApp).
   // Guarda o token no localStorage ANTES do login (sobrevive ao fluxo de criar
   // conta) e limpa a URL pra nao reprocessar.
   useEffect(() => {
@@ -226,7 +226,7 @@ export default function App() {
     } catch {}
   }, [])
 
-  // Logado e hidratado: aceita o convite pendente e vira juiz (com badge).
+  // Logado e hidratado: aceita o convite pendente e vira árbitro (com badge).
   useEffect(() => {
     if (!user || !hydrated) return
     let tok = null
@@ -235,10 +235,10 @@ export default function App() {
     try { localStorage.removeItem('sra.judgeInvite') } catch {}
     acceptJudgeInvite(tok)
       .then((res) => {
-        setJudgeInviteMsg({ ok: true, text: `Você agora é o Juiz de Prova/IAT de "${res?.name || 'campeonato'}". A auditoria fica na aba Campeonato.` })
+        setJudgeInviteMsg({ ok: true, text: `Você agora é o Árbitro/RO de "${res?.name || 'campeonato'}". A auditoria fica na aba Campeonato.` })
         setActiveTab('campeonato')
       })
-      .catch((e) => setJudgeInviteMsg({ ok: false, text: e.message || 'Erro ao aceitar convite de juiz' }))
+      .catch((e) => setJudgeInviteMsg({ ok: false, text: e.message || 'Erro ao aceitar convite de árbitro' }))
   }, [user, hydrated])
 
   if (!authChecked) {

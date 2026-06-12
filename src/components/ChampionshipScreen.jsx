@@ -16,10 +16,10 @@ import {
 } from '../lib/db.js'
 
 // Aba Campeonato.
-// Setup obrigatorio: quantidade de tiros, foto do alvo, juiz de prova/IAT
+// Setup obrigatorio: quantidade de tiros, foto do alvo, árbitro/RO
 // (convite por WhatsApp), escopo (local/regional/nacional), arma e calibre,
 // data de encerramento.
-// Atirador envia SO a foto (sem analise no lado dele). O juiz tem o fluxo
+// Atirador envia SO a foto (sem analise no lado dele). O árbitro tem o fluxo
 // completo de deteccao/correcao e a palavra final. Ranking = melhor submissao
 // aprovada de cada atirador.
 
@@ -69,14 +69,14 @@ const SCOPE_HINTS = {
 export function JudgeBadge() {
   return (
     <span className="text-[9px] tracking-[0.1em] uppercase text-gold font-semibold bg-gold/10 border border-gold/30 px-1.5 py-0.5 rounded">
-      Juiz/IAT
+      Árbitro/RO
     </span>
   )
 }
 
 function inviteJudgeLink(champ) {
   const link = `https://strikecore.pro/?juiz=${champ.judgeInviteToken}`
-  const msg = `Você foi eleito Juiz de Prova/IAT do campeonato "${champ.name}" no STRIKECORE. ` +
+  const msg = `Você foi eleito Árbitro/RO do campeonato "${champ.name}" no STRIKECORE. ` +
     `Toque no link, entre (ou crie sua conta) e o convite é aceito automaticamente: ${link}`
   return `https://wa.me/?text=${encodeURIComponent(msg)}`
 }
@@ -107,7 +107,7 @@ export default function ChampionshipScreen({ userId, acervo, club }) {
       <div className="flex items-center justify-between">
         <div>
           <div className="text-sm font-semibold text-navy">Campeonatos</div>
-          <div className="text-[11px] text-stone-500">Submissões auditadas por Juiz de Prova/IAT</div>
+          <div className="text-[11px] text-stone-500">Submissões auditadas por Árbitro/RO</div>
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
@@ -138,7 +138,7 @@ export default function ChampionshipScreen({ userId, acervo, club }) {
         <div className="card p-6 text-center space-y-2">
           <div className="text-sm font-semibold text-navy">Nenhum campeonato por aqui</div>
           <div className="text-[11px] text-stone-500 leading-relaxed">
-            Crie o primeiro: defina tiros, alvo, juiz de prova, escopo, arma e calibre. As submissões só entram no ranking depois da auditoria do juiz.
+            Crie o primeiro: defina tiros, alvo, árbitro/RO, escopo, arma e calibre. As submissões só entram no ranking depois da auditoria do árbitro.
           </div>
         </div>
       ) : (
@@ -222,7 +222,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
       <div className="card p-4 space-y-3">
         <div className="text-sm font-semibold text-navy">Campeonato criado</div>
         <div className="text-[11px] text-stone-600 leading-relaxed">
-          Falta a etapa obrigatória: <strong>eleger o Juiz de Prova/IAT</strong>. Mande o convite pelo WhatsApp. Quando a pessoa abrir o link e entrar (ou criar a conta), vira o juiz do campeonato e ganha o badge.
+          Falta a etapa obrigatória: <strong>eleger o Árbitro/RO</strong>. Mande o convite pelo WhatsApp. Quando a pessoa abrir o link e entrar (ou criar a conta), vira o árbitro do campeonato e ganha o badge.
         </div>
         <a
           href={inviteJudgeLink(created)}
@@ -230,7 +230,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
           rel="noreferrer"
           className="block w-full text-center px-4 py-3 bg-emerald-600 text-white text-sm font-semibold rounded-md hover:bg-emerald-700 transition"
         >
-          convidar juiz pelo WhatsApp
+          convidar árbitro pelo WhatsApp
         </a>
         <button onClick={onCreated} className="w-full px-4 py-2 text-xs text-stone-500 underline">
           concluir (dá pra convidar depois pelo card)
@@ -307,7 +307,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
       </div>
 
       <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-2.5 leading-relaxed">
-        Em campeonato o atirador <strong>não tem análise automática</strong>: ele só envia a foto do alvo. Quem detecta, corrige e pontua é o <strong>Juiz de Prova/IAT</strong>, e só submissão aprovada entra no ranking. Vale a melhor aprovada de cada atirador até o encerramento.
+        Em campeonato o atirador <strong>não tem análise automática</strong>: ele só envia a foto do alvo. Quem detecta, corrige e pontua é o <strong>Árbitro/RO</strong>, e só submissão aprovada entra no ranking. Vale a melhor aprovada de cada atirador até o encerramento.
       </div>
 
       {err && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md p-2">{err}</div>}
@@ -347,9 +347,9 @@ function ChampionshipCard({ champ, userId, expanded, onToggle, onChanged }) {
               <span>org: {champ.organizerName || '—'}</span>
               <span>·</span>
               {champ.judgeId ? (
-                <span className="flex items-center gap-1">juiz: {champ.judgeName} <JudgeBadge /></span>
+                <span className="flex items-center gap-1">árbitro: {champ.judgeName} <JudgeBadge /></span>
               ) : (
-                <span className="text-amber-700">sem juiz eleito</span>
+                <span className="text-amber-700">sem árbitro eleito</span>
               )}
               {(champ.iAmJudge || champ.iAmOrganizer) && champ.pendingCount > 0 && (
                 <span className="text-amber-700 font-semibold">· {champ.pendingCount} pendente{champ.pendingCount > 1 ? 's' : ''}</span>
@@ -447,7 +447,7 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
           {!champ.judgeId && champ.judgeInviteToken && (
             <a href={inviteJudgeLink(champ)} target="_blank" rel="noreferrer"
               className="px-3 py-2 text-xs font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition">
-              convidar juiz pelo WhatsApp
+              convidar árbitro pelo WhatsApp
             </a>
           )}
           {champ.status === 'open' && (
@@ -464,7 +464,7 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
         <div className="label mb-1.5">Ranking (auditado)</div>
         {ranking.length === 0 ? (
           <div className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-md p-2.5">
-            Ainda sem submissões aprovadas pelo juiz.
+            Ainda sem submissões aprovadas pelo árbitro.
           </div>
         ) : (
           <div className="space-y-1">
@@ -488,7 +488,7 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
         <div>
           <div className="label mb-1.5">Enviar submissão</div>
           <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-2.5 leading-relaxed mb-2">
-            Envie só a foto do alvo ({champ.shots} tiros, {champ.arma} · {champ.calibre}). Sem análise automática aqui: quem pontua é o Juiz de Prova/IAT. Pode reenviar até o encerramento; vale a melhor aprovada.
+            Envie só a foto do alvo ({champ.shots} tiros, {champ.arma} · {champ.calibre}). Sem análise automática aqui: quem pontua é o Árbitro/RO. Pode reenviar até o encerramento; vale a melhor aprovada.
           </div>
           <PhotoInput value={photo} onChange={setPhoto} />
           {photo && (
@@ -515,7 +515,7 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
         </div>
       )}
 
-      {/* Auditoria do juiz */}
+      {/* Auditoria do árbitro */}
       {champ.iAmJudge && (
         <div>
           <div className="label mb-1.5 flex items-center gap-1.5">Auditoria <JudgeBadge /></div>
@@ -568,7 +568,7 @@ function SubmissionStatus({ sub }) {
   return <span className="font-semibold text-amber-700">aguardando auditoria</span>
 }
 
-// ============ FLUXO DE CORRECAO DO JUIZ ============
+// ============ FLUXO DE CORRECAO DO ARBITRO ============
 
 function JudgeReview({ champ, sub, onDone }) {
   const [photo, setPhotoData] = useState(null)
@@ -592,7 +592,7 @@ function JudgeReview({ champ, sub, onDone }) {
         if (cancelled) return
         setPhotoData(dataUrl)
         if (!sub.scoring) {
-          // estrutura vazia valida pro overlay (juiz pode marcar na mao direto)
+          // estrutura vazia valida pro overlay (árbitro pode marcar na mao direto)
           setScoring(scoreWithFrame([], { frame: DEFAULT_FRAME, targetType }))
           setFrame(DEFAULT_FRAME)
         }
@@ -685,7 +685,7 @@ function JudgeReview({ champ, sub, onDone }) {
       )}
 
       <div>
-        <div className="label mb-1.5">Nota do juiz (opcional)</div>
+        <div className="label mb-1.5">Nota do árbitro (opcional)</div>
         <input className="input" value={note} onChange={(e) => setNote(e.target.value)}
           placeholder="ex: 2 furos sobrepostos no anel 5, contados" />
       </div>

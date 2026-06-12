@@ -1,9 +1,9 @@
 -- =============================================================
--- Migration: Campeonatos (setup, juiz de prova/IAT, submissoes, ranking)
+-- Migration: Campeonatos (setup, árbitro/RO, submissoes, ranking)
 -- Run in Supabase SQL Editor
 -- =============================================================
 
--- Badge de Juiz de Prova/IAT no perfil (ganha ao aceitar convite)
+-- Badge de Árbitro/RO no perfil (ganha ao aceitar convite)
 alter table public.profiles
   add column if not exists judge_badge boolean default false;
 
@@ -29,7 +29,7 @@ create table if not exists public.championships (
 
   status text not null default 'open' check (status in ('open', 'closed')),
 
-  -- Juiz de Prova / IAT
+  -- Árbitro/RO / IAT
   judge_id uuid references auth.users(id) on delete set null,
   judge_invite_token uuid not null default gen_random_uuid()
 );
@@ -47,7 +47,7 @@ create table if not exists public.championship_submissions (
 
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
 
-  -- Preenchidos pelo Juiz de Prova/IAT na auditoria
+  -- Preenchidos pelo Árbitro/RO na auditoria
   pontos integer,
   disparos integer,
   scoring jsonb,
@@ -79,7 +79,7 @@ create policy "Users upload own championship photos"
     and auth.uid()::text = (storage.foldername(name))[1]
   );
 
--- Leitura: dono da foto; juiz/organizador do campeonato da submissao;
+-- Leitura: dono da foto; árbitro/organizador do campeonato da submissao;
 -- e qualquer autenticado pra foto de referencia do alvo.
 drop policy if exists "Championship photos read" on storage.objects;
 create policy "Championship photos read"
@@ -173,7 +173,7 @@ begin
 end;
 $func$;
 
--- Juiz aceita o convite (link do WhatsApp com o token). Ganha o badge.
+-- Árbitro aceita o convite (link do WhatsApp com o token). Ganha o badge.
 create or replace function public.accept_judge_invite(p_token uuid)
 returns jsonb
 language plpgsql
@@ -188,7 +188,7 @@ begin
   if v_row.id is null then raise exception 'Convite inválido ou expirado'; end if;
   if v_row.status <> 'open' then raise exception 'Esse campeonato já foi encerrado'; end if;
   if v_row.judge_id is not null and v_row.judge_id <> auth.uid() then
-    raise exception 'Esse campeonato já tem Juiz de Prova';
+    raise exception 'Esse campeonato já tem Árbitro/RO';
   end if;
 
   update championships set judge_id = auth.uid() where id = v_row.id;
@@ -198,7 +198,7 @@ begin
 end;
 $func$;
 
--- Lista campeonatos visiveis pro usuario (escopo + organizador + juiz)
+-- Lista campeonatos visiveis pro usuario (escopo + organizador + árbitro)
 create or replace function public.list_championships(p_limit int default 100)
 returns table (
   id uuid,
@@ -231,7 +231,8 @@ declare
   v_club text;
 begin
   if auth.uid() is null then raise exception 'Não autenticado'; end if;
-  select club_name into v_club from profiles where id = auth.uid();
+  -- qualificar: "id" tambem e coluna de saida do returns table (ambiguidade)
+  select p.club_name into v_club from profiles p where p.id = auth.uid();
 
   return query
   select
@@ -263,7 +264,7 @@ end;
 $func$;
 
 -- Atirador envia submissao (so a foto; sem analise no lado do atirador).
--- Pode reenviar ate o fim: vale a melhor APROVADA pelo juiz.
+-- Pode reenviar ate o fim: vale a melhor APROVADA pelo árbitro.
 create or replace function public.submit_championship_entry(
   p_championship_id uuid,
   p_photo_path text
@@ -286,7 +287,7 @@ begin
   if v_row.status <> 'open' then raise exception 'Campeonato encerrado'; end if;
   if now() > v_row.ends_at then raise exception 'Prazo de submissão encerrado'; end if;
   if v_row.judge_id = auth.uid() then
-    raise exception 'O Juiz de Prova não pode competir no campeonato que audita';
+    raise exception 'O Árbitro/RO não pode competir no campeonato que audita';
   end if;
 
   if v_row.scope <> 'nacional' then
@@ -304,7 +305,7 @@ begin
 end;
 $func$;
 
--- Lista submissoes: o atirador ve as proprias; juiz e organizador veem todas.
+-- Lista submissoes: o atirador ve as proprias; árbitro e organizador veem todas.
 create or replace function public.list_championship_submissions(p_championship_id uuid)
 returns table (
   id uuid,
@@ -329,7 +330,8 @@ declare
   v_all boolean;
 begin
   if auth.uid() is null then raise exception 'Não autenticado'; end if;
-  select * into v_row from championships where id = p_championship_id;
+  -- qualificar: "id" tambem e coluna de saida do returns table (ambiguidade)
+  select c.* into v_row from championships c where c.id = p_championship_id;
   if v_row.id is null then raise exception 'Campeonato não encontrado'; end if;
   v_all := (v_row.judge_id = auth.uid() or v_row.organizer_id = auth.uid());
 
@@ -346,7 +348,7 @@ begin
 end;
 $func$;
 
--- Auditoria do Juiz de Prova/IAT: aprova ou rejeita com a pontuacao corrigida.
+-- Auditoria do Árbitro/RO: aprova ou rejeita com a pontuacao corrigida.
 -- Pode re-revisar (corrigir um erro) enquanto o campeonato estiver aberto.
 create or replace function public.judge_review_submission(
   p_submission_id uuid,
@@ -373,7 +375,7 @@ begin
   if v_sub.id is null then raise exception 'Submissão não encontrada'; end if;
   select * into v_champ from championships where id = v_sub.championship_id;
   if v_champ.judge_id is distinct from auth.uid() then
-    raise exception 'Apenas o Juiz de Prova deste campeonato pode auditar';
+    raise exception 'Apenas o Árbitro/RO deste campeonato pode auditar';
   end if;
   if v_champ.status <> 'open' then raise exception 'Campeonato encerrado'; end if;
   if p_status = 'approved' and (p_pontos is null or p_disparos is null) then
