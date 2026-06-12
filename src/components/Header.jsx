@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 
-export default function Header({ club, onChangeClub, user, onLogout }) {
+export default function Header({ club, onChangeClub, user, onLogout, onOpenProfile }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
@@ -50,6 +50,14 @@ export default function Header({ club, onChangeClub, user, onLogout }) {
                 <div className="text-sm font-semibold truncate">{displayName}</div>
                 <div className="text-[11px] text-stone-500 truncate">{user?.email}</div>
               </div>
+              {onOpenProfile && (
+                <button
+                  onClick={() => { setMenuOpen(false); onOpenProfile() }}
+                  className="w-full text-left px-4 py-3 text-sm text-stone-700 hover:bg-stone-50 transition border-b border-stone-100"
+                >
+                  Meu perfil
+                </button>
+              )}
               <button
                 onClick={() => { setMenuOpen(false); onLogout() }}
                 className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-stone-50 transition"

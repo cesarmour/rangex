@@ -12,6 +12,7 @@ import ChallengeScreen from './components/ChallengeScreen.jsx'
 import ChampionshipScreen from './components/ChampionshipScreen.jsx'
 import HomeScreen from './components/HomeScreen.jsx'
 import HabitualidadeScreen from './components/HabitualidadeScreen.jsx'
+import ProfilePanel from './components/ProfilePanel.jsx'
 import { DEFAULT_PRECOS, DEFAULT_SETTINGS } from './lib/defaults.js'
 import { isConfigured } from './lib/supabase.js'
 import { getSession, onAuthChange, signOut } from './lib/auth.js'
@@ -212,6 +213,7 @@ export default function App() {
   }, [user, hydrated, club, precos, settings])
 
   const [judgeInviteMsg, setJudgeInviteMsg] = useState(null)
+  const [showProfile, setShowProfile] = useState(false)
 
   // Deep link do convite de Árbitro/RO (?juiz=TOKEN, enviado por WhatsApp).
   // Guarda o token no localStorage ANTES do login (sobrevive ao fluxo de criar
@@ -517,7 +519,17 @@ export default function App() {
         onChangeClub={() => setChangingClub(true)}
         user={userInfo}
         onLogout={handleLogout}
+        onOpenProfile={() => setShowProfile(true)}
       />
+
+      {showProfile && (
+        <ProfilePanel
+          profile={profile}
+          userInfo={userInfo}
+          club={club}
+          onClose={() => setShowProfile(false)}
+        />
+      )}
 
       {judgeInviteMsg && (
         <div className="max-w-2xl mx-auto px-4 pt-3">
