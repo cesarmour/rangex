@@ -19,8 +19,9 @@ export const RING_RATIOS = { bull: 0.10, r5: 0.50, r4: 0.75, r3: 1.0 }
 export const TARGETS = {
   fc4: {
     id: 'fc4',
-    label: 'Fogo Central 4 Cores',
+    label: '4 Cores',
     mode: 'concentric',
+    image: '/alvos/fc4.webp',
     patterns: [
       { id: 'amarelo', u: 0.25, v: 0.25 },
       { id: 'verde', u: 0.75, v: 0.25 },
@@ -29,29 +30,74 @@ export const TARGETS = {
     ],
     ring3OfFrameWidth: 0.2244,
   },
-  single: {
-    id: 'single',
-    label: 'Mosca unica',
-    mode: 'concentric',
-    patterns: [{ id: 'amarelo', u: 0.5, v: 0.5 }],
-    ring3OfFrameWidth: 0.5,
-  },
   humanoide: {
     id: 'humanoide',
-    label: 'Silhueta humanoide',
+    label: 'Humanoide',
     mode: 'count',
+    image: '/alvos/humanoide.webp',
     patterns: [{ id: 'amarelo', u: 0.5, v: 0.45 }],
   },
   refem: {
     id: 'refem',
-    label: 'Refem (hostage)',
+    label: 'Refém/No-Shoot',
     mode: 'count',
+    image: '/alvos/refem.webp',
     patterns: [{ id: 'amarelo', u: 0.5, v: 0.45 }],
+  },
+  ipsc: {
+    id: 'ipsc',
+    label: 'IPSC',
+    mode: 'count',
+    image: '/alvos/ipsc.webp',
+    patterns: [{ id: 'amarelo', u: 0.5, v: 0.45 }],
+  },
+  idpa: {
+    id: 'idpa',
+    label: 'IDPA',
+    mode: 'count',
+    image: '/alvos/idpa.webp',
+    patterns: [{ id: 'amarelo', u: 0.5, v: 0.45 }],
+  },
+  precisao: {
+    id: 'precisao',
+    label: 'Precisão Circular',
+    mode: 'concentric',
+    image: '/alvos/precisao.webp',
+    patterns: [{ id: 'amarelo', u: 0.5, v: 0.5 }],
+    ring3OfFrameWidth: 0.5,
+  },
+  fclass: {
+    id: 'fclass',
+    label: 'Benchrest/F-Class',
+    mode: 'count',
+    image: '/alvos/fclass.webp',
+    patterns: [{ id: 'amarelo', u: 0.5, v: 0.5 }],
+  },
+  actionpistol: {
+    id: 'actionpistol',
+    label: 'Action Pistol',
+    mode: 'count',
+    image: '/alvos/actionpistol.webp',
+    patterns: [{ id: 'amarelo', u: 0.5, v: 0.5 }],
+  },
+
+  // Legados (escondidos da lista, mantidos pra treinos/campeonatos antigos
+  // salvos com esses ids continuarem pontuando igual).
+  single: {
+    id: 'single',
+    label: 'Mosca unica (legado)',
+    mode: 'concentric',
+    hidden: true,
+    image: '/alvos/precisao.webp',
+    patterns: [{ id: 'amarelo', u: 0.5, v: 0.5 }],
+    ring3OfFrameWidth: 0.5,
   },
   ombreira: {
     id: 'ombreira',
-    label: 'Ombreira / silhueta',
+    label: 'Ombreira / silhueta (legado)',
     mode: 'count',
+    hidden: true,
+    image: '/alvos/humanoide.webp',
     patterns: [{ id: 'amarelo', u: 0.5, v: 0.5 }],
   },
 }
@@ -63,7 +109,9 @@ export function getTarget(id) {
   return TARGETS[id] || TARGETS[DEFAULT_TARGET]
 }
 export function targetList() {
-  return Object.values(TARGETS).map((t) => ({ id: t.id, label: t.label, mode: t.mode }))
+  return Object.values(TARGETS)
+    .filter((t) => !t.hidden)
+    .map((t) => ({ id: t.id, label: t.label, mode: t.mode, image: t.image }))
 }
 
 export const DEFAULT_FRAME = {

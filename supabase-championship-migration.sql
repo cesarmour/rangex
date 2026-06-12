@@ -20,7 +20,7 @@ create table if not exists public.championships (
   -- Setup obrigatorio
   shots integer not null check (shots > 0),
   target_type text not null default 'fc4',
-  target_photo_path text not null,           -- foto do alvo utilizado (storage)
+  target_photo_path text,                    -- legado: foto enviada; novos usam o modelo do app por target_type
   scope text not null check (scope in ('local', 'regional', 'nacional')),
   clubs text[],                              -- local: [clube do organizador]; regional: lista; nacional: null
   arma text not null,
@@ -144,7 +144,6 @@ begin
   if auth.uid() is null then raise exception 'Não autenticado'; end if;
   if coalesce(trim(p_name), '') = '' then raise exception 'Dê um nome ao campeonato'; end if;
   if coalesce(p_shots, 0) <= 0 then raise exception 'Informe a quantidade de tiros'; end if;
-  if coalesce(p_target_photo_path, '') = '' then raise exception 'Envie a foto do alvo utilizado'; end if;
   if p_scope not in ('local', 'regional', 'nacional') then raise exception 'Escopo inválido'; end if;
   if coalesce(trim(p_arma), '') = '' or coalesce(trim(p_calibre), '') = '' then
     raise exception 'Escolha arma e calibre';

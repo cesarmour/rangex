@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import PhotoInput from './PhotoInput.jsx'
 import TargetOverlay from './TargetOverlay.jsx'
-import { targetList, DEFAULT_TARGET, DEFAULT_FRAME } from '../lib/targets.js'
+import { targetList, getTarget, DEFAULT_TARGET, DEFAULT_FRAME } from '../lib/targets.js'
 import { detectAndScore, scoreWithFrame } from '../lib/analyze.js'
 import {
   createChampionship,
@@ -176,7 +176,6 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
   const [name, setName] = useState('')
   const [shots, setShots] = useState('')
   const [targetType, setTargetType] = useState(DEFAULT_TARGET)
-  const [photo, setPhoto] = useState(null)
   const [scope, setScope] = useState('local')
   const [clubsText, setClubsText] = useState('')
   const [armaId, setArmaId] = useState('')
@@ -206,8 +205,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
       return null
     }
     if (i === 1) {
-      if (!photo) return 'Envie a foto do alvo utilizado.'
-      return null
+      return null // o alvo e um modelo do app, sem upload
     }
     if (i === 2) {
       if (scope === 'local' && !club?.name) return 'Selecione seu clube antes (cabeçalho > trocar clube).'
@@ -237,7 +235,6 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
     setErr(null)
     setSaving(true)
     try {
-      const photoPath = await uploadChampionshipPhoto(userId, photo)
       const clubs = scope === 'regional'
         ? clubsText.split('\n').map((s) => s.trim()).filter(Boolean)
         : null
@@ -246,7 +243,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
         name: name.trim(),
         shots: parseInt(shots),
         targetType,
-        targetPhotoPath: photoPath,
+        targetPhotoPath: null, // o alvo e um modelo do app (targets.js), sem upload
         scope,
         clubs,
         arma: arma.trim(),
@@ -359,9 +356,13 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
             </select>
           </div>
           <div>
-            <div className="label mb-1.5">Foto do alvo utilizado</div>
-            <PhotoInput value={photo} onChange={setPhoto} />
-            <div className="text-[11px] text-stone-500 mt-1.5">Essa foto fica visível no card pra todo atirador saber qual alvo usar.</div>
+            <div className="label mb-1.5">Modelo</div>
+            <img
+              src={getTarget(targetType).image}
+              alt={types.find((t) => t.id === targetType)?.label}
+              className="w-full rounded-md border border-stone-200 object-contain max-h-72 bg-white"
+            />
+            <div className="text-[11px] text-stone-500 mt-1.5">Esse modelo fica no card da prova pra todo atirador saber qual alvo usar.</div>
           </div>
         </div>
       )}
@@ -497,7 +498,6 @@ function ChampionshipCard({ champ, userId, expanded, onToggle, onChanged }) {
 // ============ DETALHE ============
 
 function ChampionshipDetail({ champ, userId, open, onChanged }) {
-  const [refUrl, setRefUrl] = useState(null)
   const [subs, setSubs] = useState([])
   const [ranking, setRanking] = useState([])
   const [loading, setLoading] = useState(true)
@@ -509,14 +509,12 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
   const reload = async () => {
     try {
       setErr(null)
-      const [s, r, url] = await Promise.all([
+      const [s, r] = await Promise.all([
         listChampionshipSubmissions(champ.id),
         championshipRanking(champ.id),
-        getChampionshipPhotoUrl(champ.targetPhotoPath),
       ])
       setSubs(s)
       setRanking(r)
-      setRefUrl(url)
     } catch (e) {
       setErr(e.message || 'Erro ao carregar campeonato')
     } finally {
@@ -579,12 +577,11 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
         </div>
       )}
 
-      {refUrl && (
-        <div>
-          <div className="label mb-1.5">Alvo da prova</div>
-          <img src={refUrl} alt="Alvo da prova" className="w-full rounded-md border border-stone-200 object-contain max-h-72 bg-stone-50" />
-        </div>
-      )}
+      <div>
+        <div className="label mb-1.5">Alvo da prova · {getTarget(champ.targetType).label}</div>
+        <img src={getTarget(champ.targetType).image} alt="Alvo da prova"
+          className="w-full rounded-md border border-stone-200 object-contain max-h-72 bg-white" />
+      </div>
 
       {/* Ranking */}
       <div>
