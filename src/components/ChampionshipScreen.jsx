@@ -64,6 +64,27 @@ function toDateInput(date) {
 
 const SCOPE_LABELS = { local: 'Local', regional: 'Regional', nacional: 'Nacional' }
 
+// Campo de data com largura controlada: o iOS impoe largura intrinseca no
+// input[type=date] (nem appearance:none resolve). A caixa visivel e um div
+// nosso e o input nativo fica invisivel por cima, so pra abrir o picker.
+function DateField({ value, onChange }) {
+  return (
+    <div className="relative">
+      <div className="input flex items-center justify-between gap-1 overflow-hidden whitespace-nowrap">
+        <span>{value ? new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR') : 'escolher…'}</span>
+        <span className="text-stone-400 text-xs shrink-0">▾</span>
+      </div>
+      <input
+        type="date"
+        value={value}
+        onChange={onChange}
+        className="absolute inset-0 w-full h-full opacity-0"
+        style={{ WebkitAppearance: 'none', appearance: 'none' }}
+      />
+    </div>
+  )
+}
+
 function visibleTo(champ) {
   if (champ.scope === 'nacional') return 'todos os clubes'
   if (champ.clubs && champ.clubs.length) return champ.clubs.join(', ')
@@ -317,7 +338,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
             </div>
             <div className="min-w-0">
               <div className="label mb-1.5">Encerramento</div>
-              <input type="date" className="input w-full min-w-0" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+              <DateField value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
             </div>
           </div>
           <div>
