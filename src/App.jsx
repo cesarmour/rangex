@@ -9,6 +9,7 @@ import EvolutionScreen from './components/EvolutionScreen.jsx'
 import RankingScreen from './components/RankingScreen.jsx'
 import AcervoScreen from './components/AcervoScreen.jsx'
 import ChallengeScreen from './components/ChallengeScreen.jsx'
+import ChampionshipScreen from './components/ChampionshipScreen.jsx'
 import { DEFAULT_ACERVO, DEFAULT_PRECOS, DEFAULT_SETTINGS } from './lib/defaults.js'
 import { isConfigured } from './lib/supabase.js'
 import { getSession, onAuthChange, signOut } from './lib/auth.js'
@@ -16,6 +17,7 @@ import {
   loadProfile, updateProfile,
   loadAcervo, addAcervo, updateAcervo, deleteAcervo, seedDefaultAcervo,
   loadTrainings, saveTraining, deleteTraining, getTrainingFull,
+  acceptJudgeInvite,
 } from './lib/db.js'
 import { analyzeTarget } from './lib/analyze.js'
 import { buildResumo } from './lib/pdf/resumo.js'
@@ -61,6 +63,7 @@ const TABS = [
   { id: 'treino', label: 'Treino' },
   { id: 'acervo', label: 'Acervo' },
   { id: 'challenge', label: 'Duelo' },
+  { id: 'campeonato', label: 'Campeonato' },
   { id: 'evolucao', label: 'Evolução' },
   { id: 'ranking', label: 'Ranking' },
 ]
@@ -204,6 +207,39 @@ export default function App() {
     }, 600)
     return () => clearTimeout(t)
   }, [user, hydrated, club, precos, settings])
+
+  const [judgeInviteMsg, setJudgeInviteMsg] = useState(null)
+
+  // Deep link do convite de Juiz de Prova/IAT (?juiz=TOKEN, enviado por WhatsApp).
+  // Guarda o token no localStorage ANTES do login (sobrevive ao fluxo de criar
+  // conta) e limpa a URL pra nao reprocessar.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const tok = params.get('juiz')
+      if (tok) {
+        localStorage.setItem('sra.judgeInvite', tok)
+        params.delete('juiz')
+        const qs = params.toString()
+        window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
+      }
+    } catch {}
+  }, [])
+
+  // Logado e hidratado: aceita o convite pendente e vira juiz (com badge).
+  useEffect(() => {
+    if (!user || !hydrated) return
+    let tok = null
+    try { tok = localStorage.getItem('sra.judgeInvite') } catch {}
+    if (!tok) return
+    try { localStorage.removeItem('sra.judgeInvite') } catch {}
+    acceptJudgeInvite(tok)
+      .then((res) => {
+        setJudgeInviteMsg({ ok: true, text: `Você agora é o Juiz de Prova/IAT de "${res?.name || 'campeonato'}". A auditoria fica na aba Campeonato.` })
+        setActiveTab('campeonato')
+      })
+      .catch((e) => setJudgeInviteMsg({ ok: false, text: e.message || 'Erro ao aceitar convite de juiz' }))
+  }, [user, hydrated])
 
   if (!authChecked) {
     return (
@@ -479,6 +515,17 @@ export default function App() {
         onLogout={handleLogout}
       />
 
+      {judgeInviteMsg && (
+        <div className="max-w-2xl mx-auto px-4 pt-3">
+          <div className={`flex items-start justify-between gap-2 text-xs rounded-md p-3 border ${
+            judgeInviteMsg.ok ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'
+          }`}>
+            <span className="leading-relaxed">{judgeInviteMsg.text}</span>
+            <button onClick={() => setJudgeInviteMsg(null)} className="font-bold px-1">×</button>
+          </div>
+        </div>
+      )}
+
       {/* Tab content */}
       {activeTab === 'treino' && (
         <main className="max-w-2xl mx-auto px-4 py-5 space-y-4">
@@ -654,6 +701,9 @@ export default function App() {
           optedInRanking={profile?.show_in_ranking || false}
           onToggleOptIn={toggleRanking}
         />
+      )}
+      {activeTab === 'campeonato' && (
+        <ChampionshipScreen userId={user.id} acervo={acervo} club={club} />
       )}
       {activeTab === 'evolucao' && <EvolutionScreen trainings={trainings} />}
       {activeTab === 'ranking' && (

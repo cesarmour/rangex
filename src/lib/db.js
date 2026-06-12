@@ -387,3 +387,160 @@ export async function deleteAcervoPhoto(path) {
   if (!supabase || !path) return
   await supabase.storage.from('acervo-photos').remove([path])
 }
+
+// ============ CAMPEONATOS ============
+
+function rowToChampionship(row) {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    name: row.name,
+    shots: row.shots,
+    targetType: row.target_type,
+    targetPhotoPath: row.target_photo_path,
+    scope: row.scope,
+    clubs: row.clubs,
+    arma: row.arma,
+    calibre: row.calibre,
+    endsAt: row.ends_at,
+    status: row.status,
+    organizerId: row.organizer_id,
+    organizerName: row.organizer_name,
+    judgeId: row.judge_id,
+    judgeName: row.judge_name,
+    iAmOrganizer: row.i_am_organizer,
+    iAmJudge: row.i_am_judge,
+    judgeInviteToken: row.judge_invite_token,
+    mySubmissions: Number(row.my_submissions || 0),
+    pendingCount: Number(row.pending_count || 0),
+  }
+}
+
+export async function createChampionship({ name, shots, targetType, targetPhotoPath, scope, clubs, arma, calibre, endsAt }) {
+  if (!supabase) throw new Error('Não autenticado')
+  const { data, error } = await supabase.rpc('create_championship', {
+    p_name: name,
+    p_shots: shots,
+    p_target_type: targetType,
+    p_target_photo_path: targetPhotoPath,
+    p_scope: scope,
+    p_clubs: clubs,
+    p_arma: arma,
+    p_calibre: calibre,
+    p_ends_at: endsAt,
+  })
+  if (error) throw error
+  return data // { id, judge_invite_token }
+}
+
+export async function listChampionships(limit = 100) {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('list_championships', { p_limit: limit })
+  if (error) throw error
+  return (data || []).map(rowToChampionship)
+}
+
+export async function acceptJudgeInvite(token) {
+  if (!supabase) throw new Error('Não autenticado')
+  const { data, error } = await supabase.rpc('accept_judge_invite', { p_token: token })
+  if (error) throw error
+  return data // { id, name }
+}
+
+export async function submitChampionshipEntry(championshipId, photoPath) {
+  if (!supabase) throw new Error('Não autenticado')
+  const { data, error } = await supabase.rpc('submit_championship_entry', {
+    p_championship_id: championshipId,
+    p_photo_path: photoPath,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function listChampionshipSubmissions(championshipId) {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('list_championship_submissions', {
+    p_championship_id: championshipId,
+  })
+  if (error) throw error
+  return (data || []).map((row) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    shooterId: row.shooter_id,
+    shooterName: row.shooter_name,
+    photoPath: row.photo_path,
+    status: row.status,
+    pontos: row.pontos,
+    disparos: row.disparos,
+    scoring: row.scoring,
+    frame: row.frame,
+    judgeNote: row.judge_note,
+    reviewedAt: row.reviewed_at,
+  }))
+}
+
+export async function judgeReviewSubmission({ submissionId, status, pontos, disparos, scoring, frame, note }) {
+  if (!supabase) throw new Error('Não autenticado')
+  const { error } = await supabase.rpc('judge_review_submission', {
+    p_submission_id: submissionId,
+    p_status: status,
+    p_pontos: pontos,
+    p_disparos: disparos,
+    p_scoring: scoring,
+    p_frame: frame,
+    p_note: note,
+  })
+  if (error) throw error
+}
+
+export async function championshipRanking(championshipId) {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('championship_ranking', {
+    p_championship_id: championshipId,
+  })
+  if (error) throw error
+  return (data || []).map((row) => ({
+    shooterId: row.shooter_id,
+    shooterName: row.shooter_name,
+    bestPontos: Number(row.best_pontos || 0),
+    bestDisparos: Number(row.best_disparos || 0),
+    approvedCount: Number(row.approved_count || 0),
+    bestAt: row.best_at,
+  }))
+}
+
+export async function closeChampionship(championshipId) {
+  if (!supabase) throw new Error('Não autenticado')
+  const { error } = await supabase.rpc('close_championship', { p_championship_id: championshipId })
+  if (error) throw error
+}
+
+export async function uploadChampionshipPhoto(userId, dataUrl) {
+  if (!supabase || !userId) throw new Error('Não autenticado')
+  const match = dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/)
+  if (!match) throw new Error('Foto inválida')
+  const mediaType = match[1]
+  const base64 = match[2]
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  const blob = new Blob([bytes], { type: mediaType })
+
+  const ext = mediaType.split('/')[1].replace('+xml', '')
+  const path = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+
+  const { error } = await supabase.storage
+    .from('championship-photos')
+    .upload(path, blob, { contentType: mediaType, upsert: false })
+  if (error) throw error
+  return path
+}
+
+export async function getChampionshipPhotoUrl(path, expiresIn = 60 * 60 * 24) {
+  if (!supabase || !path) return null
+  const { data, error } = await supabase.storage
+    .from('championship-photos')
+    .createSignedUrl(path, expiresIn)
+  if (error) return null
+  return data.signedUrl
+}
