@@ -646,3 +646,18 @@ export async function habitSfpcExport(competencia) {
   if (error) throw error
   return data
 }
+
+// ============ GESTAO DE USUARIOS (admin) ============
+
+export async function adminListUsers(query = '', limit = 50) {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('admin_list_users', { p_query: query || null, p_limit: limit })
+  if (error) throw error
+  return data || []
+}
+
+export async function adminSetRole(userId, role) {
+  if (!supabase) throw new Error('Não autenticado')
+  const { error } = await supabase.rpc('admin_set_role', { p_user_id: userId, p_role: role })
+  if (error) throw error
+}

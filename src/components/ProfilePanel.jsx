@@ -1,6 +1,9 @@
 // Meu perfil: identidade, papel e o que cada papel pode fazer no app.
 // Papeis: user (atirador), ro (atirador com permissao de Range Officer),
-// admin (faz tudo). Promocao de papel e acao administrativa (SQL por enquanto).
+// admin (faz tudo). Admin gerencia os papeis dos outros aqui mesmo
+// (botao "gerenciar usuarios"), exceto o proprio papel.
+import { useState, useEffect } from 'react'
+import { adminListUsers, adminSetRole } from '../lib/db.js'
 
 const ROLE_META = {
   user: { label: 'Atirador', badge: 'bg-stone-100 text-stone-600 border-stone-200' },
@@ -33,6 +36,7 @@ function maskCpf(cpf) {
 }
 
 export default function ProfilePanel({ profile, userInfo, club, onClose }) {
+  const [view, setView] = useState('perfil') // 'perfil' | 'usuarios'
   const role = profile?.role || 'user'
   const meta = ROLE_META[role] || ROLE_META.user
   const perms = [
@@ -73,7 +77,16 @@ export default function ProfilePanel({ profile, userInfo, club, onClose }) {
           </div>
         </div>
 
+        {view === 'usuarios' ? (
+          <UserAdmin meId={profile?.id} onBack={() => setView('perfil')} />
+        ) : (
         <div className="p-4 space-y-4">
+          {role === 'admin' && (
+            <button onClick={() => setView('usuarios')}
+              className="w-full px-4 py-2.5 bg-navy text-white text-xs font-semibold rounded-md border-b-2 border-gold transition">
+              gerenciar usuários e papéis
+            </button>
+          )}
           <div>
             <div className="text-xs tracking-[0.18em] uppercase text-gold font-semibold mb-2">Permissões</div>
             <div className="space-y-1">
@@ -105,6 +118,98 @@ export default function ProfilePanel({ profile, userInfo, club, onClose }) {
             Mudança de papel (admin/RO) é ação administrativa. O papel de Árbitro/RO também é concedido automaticamente ao aceitar um convite de campeonato.
           </div>
         </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============ Gestao de usuarios (admin) ============
+
+const ROLE_OPTIONS = [
+  { value: 'user', label: 'Atirador' },
+  { value: 'ro', label: 'Árbitro/RO' },
+  { value: 'admin', label: 'Admin' },
+]
+
+function UserAdmin({ meId, onBack }) {
+  const [q, setQ] = useState('')
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState(null)
+  const [savingId, setSavingId] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const t = setTimeout(async () => {
+      try {
+        setErr(null)
+        const list = await adminListUsers(q.trim())
+        if (!cancelled) setUsers(list)
+      } catch (e) {
+        if (!cancelled) setErr(e.message || 'Erro ao listar usuários')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }, 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [q])
+
+  const setRole = async (u, role) => {
+    setSavingId(u.id)
+    setErr(null)
+    try {
+      await adminSetRole(u.id, role)
+      setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, role } : x)))
+    } catch (e) {
+      setErr(e.message || 'Erro ao mudar papel')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-xs tracking-[0.18em] uppercase text-gold font-semibold">Usuários e papéis</div>
+        <button onClick={onBack} className="text-xs text-stone-500 underline">voltar</button>
+      </div>
+      <input className="input" value={q} onChange={(e) => setQ(e.target.value)}
+        placeholder="buscar por nome, email ou clube…" />
+      {err && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md p-2">{err}</div>}
+      {loading ? (
+        <div className="text-xs text-stone-500 py-4 text-center">carregando…</div>
+      ) : users.length === 0 ? (
+        <div className="text-[11px] text-stone-500 bg-stone-50 border border-stone-200 rounded-md p-2.5">nenhum usuário encontrado</div>
+      ) : (
+        <div className="space-y-1.5">
+          {users.map((u) => {
+            const isMe = u.id === meId
+            return (
+              <div key={u.id} className="bg-white border border-stone-200 rounded-md px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-stone-800 truncate">
+                      {u.nome_completo || u.display_name}{isMe ? ' (você)' : ''}
+                    </div>
+                    <div className="text-[10px] text-stone-400 truncate">{u.email}{u.club_name ? ` · ${u.club_name}` : ''}</div>
+                  </div>
+                  <select
+                    className="input !w-auto px-2 py-1.5 text-xs shrink-0"
+                    value={u.role}
+                    disabled={isMe || savingId === u.id}
+                    onChange={(e) => setRole(u, e.target.value)}
+                  >
+                    {ROLE_OPTIONS.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
+                  </select>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <div className="text-[10px] text-stone-400 leading-relaxed">
+        Mudar pra Árbitro/RO ou Admin liga o badge. O próprio papel não é editável aqui (proteção contra se trancar fora).
       </div>
     </div>
   )

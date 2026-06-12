@@ -215,7 +215,7 @@ function CadastroCR({ profile, onSave, onCancel }) {
   const [buscandoCep, setBuscandoCep] = useState(false)
   const [cepErr, setCepErr] = useState(null)
   const viaCepRef = useRef(null)
-  const [filiacaoNumero, setFiliacaoNumero] = useState(profile?.filiacao_numero || '8062') // padrao G16
+  const [filiacaoNumero, setFiliacaoNumero] = useState(profile?.filiacao_numero || '') // nº de cadastro do filiado no clube
   const [filiacaoData, setFiliacaoData] = useState(profile?.filiacao_data || '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
@@ -336,8 +336,8 @@ function CadastroCR({ profile, onSave, onCancel }) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="min-w-0">
-          <div className="label mb-1.5">Filiação (nº)</div>
-          <input className="input" value={filiacaoNumero} onChange={(e) => setFiliacaoNumero(e.target.value)} placeholder="8062" />
+          <div className="label mb-1.5">Filiação (nº, opcional)</div>
+          <input className="input" value={filiacaoNumero} onChange={(e) => setFiliacaoNumero(e.target.value)} placeholder="seu nº no clube" />
         </div>
         <div className="min-w-0">
           <div className="label mb-1.5">Data (opcional)</div>
@@ -607,7 +607,7 @@ function AnexoEBox({ sessions, profile, config }) {
           crData: profile?.cr_data,
           nivel: profile?.nivel_habitualidade || '1',
           endereco: profile?.endereco_habitualidade || '',
-          filiacaoNumero: profile?.filiacao_numero || '8062',
+          filiacaoNumero: profile?.filiacao_numero || '',
           filiacaoData: profile?.filiacao_data || null,
         },
         config,
