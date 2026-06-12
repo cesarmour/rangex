@@ -36,16 +36,16 @@ insert into public.habit_config (id, entidade, responsavel)
 values (
   1,
   jsonb_build_object(
-    'nome', 'Seven Shooting Academia de Tiros e Comercio de Importação LTDA',
+    'nome', 'G16 UNIVERSIDADE DO TIRO PREMIUM',
     'cnpj', '36.029.202/0001-03',
     'endereco', 'Alameda dos Nhambiquaras, 1509 - Moema, São Paulo - SP, 04090-013',
-    'cr_numero', '',
+    'cr_numero', '502342',
     'cr_data', null
   ),
   jsonb_build_object(
-    'nome', 'Daniel Pazzini',
+    'nome', 'Daniel Pazzini Araujo da Silva',
     'cargo', 'Diretor',
-    'cpf', '',
+    'cpf', '483.308.208-07',
     'cert_assinatura_tipo', 'gov_br'
   )
 )
