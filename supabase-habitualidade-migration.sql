@@ -9,6 +9,7 @@
 -- 1. Cadastro do atirador (CR/CPF na primeira vez, depois fica no perfil)
 -- ============================================================
 alter table public.profiles
+  add column if not exists nome_completo text,
   add column if not exists cpf text,
   add column if not exists cr_numero text,
   add column if not exists cr_data date,
@@ -209,8 +210,9 @@ begin
   if auth.uid() is null then raise exception 'Não autenticado'; end if;
 
   select * into v_profile from profiles where id = auth.uid();
-  if coalesce(trim(v_profile.cpf), '') = '' or coalesce(trim(v_profile.cr_numero), '') = '' then
-    raise exception 'Cadastre seu CPF e CR antes de lançar habitualidade';
+  if coalesce(trim(v_profile.cpf), '') = '' or coalesce(trim(v_profile.cr_numero), '') = ''
+     or coalesce(trim(v_profile.nome_completo), '') = '' then
+    raise exception 'Cadastre seu nome completo, CPF e CR antes de lançar habitualidade';
   end if;
 
   select * into v_gun from club_guns where id = p_gun_id and ativo;
@@ -261,7 +263,8 @@ begin
   v_seq := nextval('habit_registro_seq');
   v_numero := 'SC-' || lpad(v_seq::text, 6, '0');
   v_folha := lpad((((v_seq - 1) / 30) + 1)::text, 4, '0');
-  v_nome := coalesce(nullif(v_profile.nickname, ''), v_profile.display_name, split_part(v_profile.email, '@', 1));
+  -- documento legal: nome civil completo, nunca apelido
+  v_nome := trim(v_profile.nome_completo);
 
   insert into habit_sessions (
     numero_registro, livro_sistema, folha, data_hora_evento,

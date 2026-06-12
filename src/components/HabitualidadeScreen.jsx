@@ -70,7 +70,7 @@ export default function HabitualidadeScreen({ userId, profile, onSaveProfile, is
   const [showLaunch, setShowLaunch] = useState(false)
   const [editingCadastro, setEditingCadastro] = useState(false)
 
-  const cadastroOk = Boolean(profile?.cpf?.trim() && profile?.cr_numero?.trim()) && !editingCadastro
+  const cadastroOk = Boolean(profile?.cpf?.trim() && profile?.cr_numero?.trim() && profile?.nome_completo?.trim()) && !editingCadastro
 
   const reload = async () => {
     try {
@@ -156,7 +156,7 @@ export default function HabitualidadeScreen({ userId, profile, onSaveProfile, is
           <AnexoEBox sessions={sessions} profile={profile} config={config} />
 
           <button onClick={() => setEditingCadastro(true)} className="text-xs text-stone-500 underline px-1">
-            editar cadastro do atirador (CPF, CR, endereço, filiação)
+            editar cadastro do atirador (nome completo, CPF, CR, endereço, filiação)
           </button>
 
           {/* Livro de registros */}
@@ -204,6 +204,7 @@ export default function HabitualidadeScreen({ userId, profile, onSaveProfile, is
 // ============ Cadastro CR/CPF (primeira vez) ============
 
 function CadastroCR({ profile, onSave, onCancel }) {
+  const [nomeCompleto, setNomeCompleto] = useState(profile?.nome_completo || '')
   const [cpf, setCpf] = useState(profile?.cpf || '')
   const [cr, setCr] = useState(profile?.cr_numero || '')
   const [crData, setCrData] = useState(profile?.cr_data || '')
@@ -216,6 +217,7 @@ function CadastroCR({ profile, onSave, onCancel }) {
 
   const save = async () => {
     const cpfDigits = cpf.replace(/\D/g, '')
+    if (nomeCompleto.trim().split(/\s+/).length < 2) return setErr('Informe seu nome civil completo (vai nos registros e no Anexo E).')
     if (cpfDigits.length !== 11) return setErr('CPF inválido (11 dígitos).')
     if (!cr.trim()) return setErr('Informe o número do seu CR.')
     if (!endereco.trim()) return setErr('Informe seu endereço (sai no Anexo E).')
@@ -223,6 +225,7 @@ function CadastroCR({ profile, onSave, onCancel }) {
     setSaving(true)
     try {
       await onSave({
+        nome_completo: nomeCompleto.trim(),
         cpf: cpfDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'),
         cr_numero: cr.trim(),
         cr_data: crData || null,
@@ -242,6 +245,11 @@ function CadastroCR({ profile, onSave, onCancel }) {
       <div className="text-sm font-semibold text-navy">Primeiro acesso: cadastro do atirador</div>
       <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-2.5 leading-relaxed">
         CR e CPF entram em todo registro de habitualidade e na Declaração (Anexo E). Você cadastra uma vez; nas próximas, já compõe o seu cadastro.
+      </div>
+      <div>
+        <div className="label mb-1.5">Nome completo (como no CR)</div>
+        <input className="input" value={nomeCompleto} onChange={(e) => setNomeCompleto(e.target.value)}
+          placeholder="nome civil completo" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="min-w-0">
@@ -540,7 +548,7 @@ function AnexoEBox({ sessions, profile, config }) {
       const doc = buildAnexoE({
         sessions: doPeriodo,
         atirador: {
-          nome: profile?.nickname || profile?.display_name || '',
+          nome: profile?.nome_completo || profile?.nickname || profile?.display_name || '',
           cpf: profile?.cpf,
           cr: profile?.cr_numero,
           crData: profile?.cr_data,
