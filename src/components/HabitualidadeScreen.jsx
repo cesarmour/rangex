@@ -540,8 +540,6 @@ function AnexoEBox({ sessions, profile, config }) {
           crData: profile?.cr_data,
           nivel: profile?.nivel_habitualidade || '1',
           endereco: profile?.endereco_habitualidade || '',
-          filiacaoNumero: profile?.filiacao_numero || '',
-          filiacaoData: profile?.filiacao_data || null,
         },
         config,
         periodo: { inicio: `${inicio}T00:00:00`, fim: `${fim}T00:00:00` },

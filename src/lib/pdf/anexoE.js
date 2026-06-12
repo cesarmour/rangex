@@ -116,21 +116,15 @@ export function buildAnexoE({ sessions, atirador, config, periodo }) {
   })
   y = doc.lastAutoTable.finalY + 4
 
-  // ---- Atirador ----
+  // ---- Atirador (sem linha de filiacao, a pedido) ----
   y = sectionCaption(doc, y, 'Dados do Atirador Desportivo')
-  const filiacaoRow = [
-    { content: 'Filiação à Entidade de Tiro', styles: { fontStyle: 'bold' } },
-    { content: `Número: ${atirador.filiacaoNumero || ''}`, styles: { fontStyle: 'bold', cellWidth: 45 } },
-    { content: `Data: ${fmtD(atirador.filiacaoData)}`, styles: { fontStyle: 'bold', cellWidth: 45 } },
-  ]
   autoTable(doc, {
     ...GRID,
     startY: y,
     body: [
-      [{ content: `Nome: ${atirador.nome || ''}`, colSpan: 2, styles: { fontStyle: 'bold' } }, { content: `CPF: ${atirador.cpf || ''}`, styles: { fontStyle: 'bold', cellWidth: 45 } }],
-      [{ content: `Certificado de Registro: ${atirador.cr || ''}`, colSpan: 2, styles: { fontStyle: 'bold' } }, { content: `Data: ${fmtD(atirador.crData)}`, styles: { fontStyle: 'bold', cellWidth: 45 } }],
-      [{ content: `Endereço: ${atirador.endereco || ''}`, colSpan: 3, styles: { fontStyle: 'bold' } }],
-      filiacaoRow,
+      [{ content: `Nome: ${atirador.nome || ''}`, styles: { fontStyle: 'bold' } }, { content: `CPF: ${atirador.cpf || ''}`, styles: { fontStyle: 'bold', cellWidth: 45 } }],
+      [{ content: `Certificado de Registro: ${atirador.cr || ''}`, styles: { fontStyle: 'bold' } }, { content: `Data: ${fmtD(atirador.crData)}`, styles: { fontStyle: 'bold', cellWidth: 45 } }],
+      [{ content: `Endereço: ${atirador.endereco || ''}`, colSpan: 2, styles: { fontStyle: 'bold' } }],
     ],
   })
   y = doc.lastAutoTable.finalY + 5
