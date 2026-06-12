@@ -138,7 +138,7 @@ export default function ChampionshipScreen({ userId, acervo, club }) {
 
       {!showCreate && (
         <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-3 leading-relaxed">
-          <strong>Como funciona:</strong> o organizador cria a prova e convida o Árbitro/RO pelo WhatsApp. Os atiradores dos clubes do escopo veem o campeonato aqui e enviam só a foto do alvo. O árbitro audita cada submissão e só as aprovadas entram no ranking. Vale a melhor aprovada de cada atirador até o encerramento.
+          <strong>Como funciona:</strong> o organizador cria a prova e convida o Árbitro/RO pelo WhatsApp. Os atiradores dos clubes do escopo veem o campeonato aqui e enviam só a foto do alvo. O árbitro audita cada submissão e só as aprovadas entram no ranking, conforme a regra da prova: melhor aprovada até o encerramento ou submissão única.
         </div>
       )}
 
@@ -182,6 +182,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
   const [armaId, setArmaId] = useState('')
   const [arma, setArma] = useState('')
   const [calibre, setCalibre] = useState('')
+  const [submissionMode, setSubmissionMode] = useState('best')
   const [endsAt, setEndsAt] = useState(() => toDateInput(new Date(Date.now() + 7 * 24 * 3600 * 1000)))
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
@@ -251,6 +252,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
         arma: arma.trim(),
         calibre: calibre.trim(),
         endsAt: endIso.toISOString(),
+        submissionMode,
       })
       setCreated({ id: res.id, name: name.trim(), judgeInviteToken: res.judge_invite_token })
     } catch (e) {
@@ -319,6 +321,28 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
             <div className="min-w-0">
               <div className="label mb-1.5">Encerramento</div>
               <input type="date" className="input w-full min-w-0" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <div className="label mb-1.5">Submissões</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setSubmissionMode('best')}
+                className={`px-2 py-2 text-xs font-semibold rounded-md border transition ${
+                  submissionMode === 'best' ? 'bg-navy text-white border-navy' : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300'
+                }`}>
+                melhor aprovada
+              </button>
+              <button type="button" onClick={() => setSubmissionMode('single')}
+                className={`px-2 py-2 text-xs font-semibold rounded-md border transition ${
+                  submissionMode === 'single' ? 'bg-navy text-white border-navy' : 'bg-white text-stone-600 border-stone-200 hover:border-stone-300'
+                }`}>
+                submissão única
+              </button>
+            </div>
+            <div className="text-[11px] text-stone-500 mt-1.5">
+              {submissionMode === 'best'
+                ? 'O atirador pode reenviar até o encerramento; vale a melhor aprovada pelo árbitro.'
+                : 'Cada atirador envia uma única submissão. Só pode reenviar se o árbitro rejeitar.'}
             </div>
           </div>
           <div className="text-[11px] text-stone-500">Submissões valem até as 23:59 do dia escolhido. Você pode encerrar antes.</div>
@@ -394,6 +418,7 @@ function CreateChampionship({ userId, acervo, club, onCreated }) {
             <div><span className="text-stone-400">tiros:</span> {shots || '—'} · <span className="text-stone-400">alvo:</span> {types.find((t) => t.id === targetType)?.label}</div>
             <div><span className="text-stone-400">escopo:</span> {SCOPE_LABELS[scope]} ({scope === 'local' ? (club?.name || '—') : scope === 'regional' ? (clubsText.split('\n').map(s => s.trim()).filter(Boolean).join(', ') || '—') : 'todos os clubes'})</div>
             <div><span className="text-stone-400">arma:</span> {arma || '—'} · {calibre || '—'}</div>
+            <div><span className="text-stone-400">submissões:</span> {submissionMode === 'best' ? 'melhor aprovada até o fim' : 'única (reenvio só se rejeitada)'}</div>
             <div><span className="text-stone-400">encerra:</span> {endsAt ? new Date(`${endsAt}T23:59:59`).toLocaleDateString('pt-BR') : '—'} às 23:59</div>
           </div>
         </div>
@@ -443,7 +468,7 @@ function ChampionshipCard({ champ, userId, expanded, onToggle, onChanged }) {
               </span>
             </div>
             <div className="text-[11px] text-stone-500 mt-0.5">
-              {champ.arma}  ·  {champ.calibre}  ·  {champ.shots} tiros  ·  até {fmtDay(champ.endsAt)}
+              {champ.arma}  ·  {champ.calibre}  ·  {champ.shots} tiros  ·  {champ.submissionMode === 'single' ? 'submissão única' : 'melhor aprovada'}  ·  até {fmtDay(champ.endsAt)}
             </div>
             <div className="text-[11px] text-stone-500 mt-0.5">visível para: {visibleTo(champ)}</div>
             <div className="text-[11px] text-stone-500 flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -530,7 +555,10 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
 
   const mySubs = subs.filter((s) => s.shooterId === userId)
   const pending = subs.filter((s) => s.status === 'pending')
-  const canShoot = open && !champ.iAmJudge
+  // Submissao unica: ja enviou (pendente ou aprovada) = nao reenvia
+  const singleUsed = champ.submissionMode === 'single'
+    && mySubs.some((s) => s.status === 'pending' || s.status === 'approved')
+  const canShoot = open && !champ.iAmJudge && !singleUsed
 
   if (loading) return <div className="p-4 text-xs text-stone-500">carregando…</div>
 
@@ -587,7 +615,9 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
         <div>
           <div className="label mb-1.5">Enviar submissão</div>
           <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-2.5 leading-relaxed mb-2">
-            <strong>1.</strong> Atire a prova ({champ.shots} tiros, {champ.arma} · {champ.calibre}). <strong>2.</strong> Fotografe o alvo e envie aqui (sem análise automática). <strong>3.</strong> O Árbitro/RO audita e, se aprovar, sua pontuação entra no ranking. Pode reenviar até {fmtDay(champ.endsAt)}; vale a melhor aprovada.
+            <strong>1.</strong> Atire a prova ({champ.shots} tiros, {champ.arma} · {champ.calibre}). <strong>2.</strong> Fotografe o alvo e envie aqui (sem análise automática). <strong>3.</strong> O Árbitro/RO audita e, se aprovar, sua pontuação entra no ranking. {champ.submissionMode === 'single'
+              ? 'Submissão única: só dá pra reenviar se o árbitro rejeitar.'
+              : `Pode reenviar até ${fmtDay(champ.endsAt)}; vale a melhor aprovada.`}
           </div>
           <PhotoInput value={photo} onChange={setPhoto} />
           {photo && (
@@ -600,6 +630,13 @@ function ChampionshipDetail({ champ, userId, open, onChanged }) {
       )}
 
       {/* Minhas submissoes */}
+      {singleUsed && open && (
+        <div className="text-[11px] text-stone-600 bg-stone-50 border border-stone-200 rounded-md p-2.5 leading-relaxed">
+          Submissão única enviada. {mySubs.some((s) => s.status === 'approved')
+            ? 'Aprovada pelo árbitro: está no ranking.'
+            : 'Aguardando auditoria do Árbitro/RO. Se for rejeitada, você pode reenviar.'}
+        </div>
+      )}
       {mySubs.length > 0 && (
         <div>
           <div className="label mb-1.5">Minhas submissões</div>

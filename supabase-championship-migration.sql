@@ -27,6 +27,10 @@ create table if not exists public.championships (
   calibre text not null,
   ends_at timestamptz not null,
 
+  -- 'best' = vale a melhor aprovada de cada atirador ate o encerramento
+  -- 'single' = submissao unica (reenvio so se a anterior for rejeitada)
+  submission_mode text not null default 'best' check (submission_mode in ('best', 'single')),
+
   status text not null default 'open' check (status in ('open', 'closed')),
 
   -- Árbitro/RO / IAT
@@ -124,7 +128,8 @@ create or replace function public.create_championship(
   p_clubs text[],
   p_arma text,
   p_calibre text,
-  p_ends_at timestamptz
+  p_ends_at timestamptz,
+  p_submission_mode text default 'best'
 )
 returns jsonb
 language plpgsql
@@ -147,6 +152,9 @@ begin
   if p_ends_at is null or p_ends_at <= now() then
     raise exception 'A data de encerramento precisa ser no futuro';
   end if;
+  if p_submission_mode not in ('best', 'single') then
+    raise exception 'Modo de submissão inválido';
+  end if;
 
   select club_name into v_club from profiles where id = auth.uid();
 
@@ -163,10 +171,10 @@ begin
   end if;
 
   insert into championships
-    (organizer_id, name, shots, target_type, target_photo_path, scope, clubs, arma, calibre, ends_at)
+    (organizer_id, name, shots, target_type, target_photo_path, scope, clubs, arma, calibre, ends_at, submission_mode)
   values
     (auth.uid(), trim(p_name), p_shots, coalesce(p_target_type, 'fc4'), p_target_photo_path,
-     p_scope, v_clubs, trim(p_arma), trim(p_calibre), p_ends_at)
+     p_scope, v_clubs, trim(p_arma), trim(p_calibre), p_ends_at, p_submission_mode)
   returning * into v_row;
 
   return jsonb_build_object('id', v_row.id, 'judge_invite_token', v_row.judge_invite_token);
@@ -213,6 +221,7 @@ returns table (
   calibre text,
   ends_at timestamptz,
   status text,
+  submission_mode text,
   organizer_id uuid,
   organizer_name text,
   judge_id uuid,
@@ -238,6 +247,7 @@ begin
   select
     c.id, c.created_at, c.name, c.shots, c.target_type, c.target_photo_path,
     c.scope, c.clubs, c.arma, c.calibre, c.ends_at, c.status,
+    c.submission_mode,
     c.organizer_id,
     coalesce(nullif(po.nickname, ''), po.display_name, split_part(po.email, '@', 1)) as organizer_name,
     c.judge_id,
@@ -294,6 +304,18 @@ begin
     select club_name into v_club from profiles where id = auth.uid();
     if v_club is null or not (v_club = any(v_row.clubs)) then
       raise exception 'Seu clube não participa deste campeonato';
+    end if;
+  end if;
+
+  -- Submissao unica: so reenvia se a anterior foi rejeitada
+  if v_row.submission_mode = 'single' then
+    if exists (
+      select 1 from championship_submissions s
+      where s.championship_id = p_championship_id
+        and s.shooter_id = auth.uid()
+        and s.status in ('pending', 'approved')
+    ) then
+      raise exception 'Este campeonato é de submissão única: você já enviou a sua';
     end if;
   end if;
 

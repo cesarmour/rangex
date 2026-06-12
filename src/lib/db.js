@@ -404,6 +404,7 @@ function rowToChampionship(row) {
     calibre: row.calibre,
     endsAt: row.ends_at,
     status: row.status,
+    submissionMode: row.submission_mode || 'best',
     organizerId: row.organizer_id,
     organizerName: row.organizer_name,
     judgeId: row.judge_id,
@@ -416,7 +417,7 @@ function rowToChampionship(row) {
   }
 }
 
-export async function createChampionship({ name, shots, targetType, targetPhotoPath, scope, clubs, arma, calibre, endsAt }) {
+export async function createChampionship({ name, shots, targetType, targetPhotoPath, scope, clubs, arma, calibre, endsAt, submissionMode = 'best' }) {
   if (!supabase) throw new Error('Não autenticado')
   const { data, error } = await supabase.rpc('create_championship', {
     p_name: name,
@@ -428,6 +429,7 @@ export async function createChampionship({ name, shots, targetType, targetPhotoP
     p_arma: arma,
     p_calibre: calibre,
     p_ends_at: endsAt,
+    p_submission_mode: submissionMode,
   })
   if (error) throw error
   return data // { id, judge_invite_token }
