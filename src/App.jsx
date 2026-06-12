@@ -11,6 +11,7 @@ import AcervoScreen from './components/AcervoScreen.jsx'
 import ChallengeScreen from './components/ChallengeScreen.jsx'
 import ChampionshipScreen from './components/ChampionshipScreen.jsx'
 import HomeScreen from './components/HomeScreen.jsx'
+import HabitualidadeScreen from './components/HabitualidadeScreen.jsx'
 import { DEFAULT_ACERVO, DEFAULT_PRECOS, DEFAULT_SETTINGS } from './lib/defaults.js'
 import { isConfigured } from './lib/supabase.js'
 import { getSession, onAuthChange, signOut } from './lib/auth.js'
@@ -66,6 +67,7 @@ const TABS = [
   { id: 'acervo', label: 'Acervo' },
   { id: 'challenge', label: 'Duelo' },
   { id: 'campeonato', label: 'Campeonato' },
+  { id: 'habitualidade', label: 'Habitual.' },
   { id: 'evolucao', label: 'Evolução' },
   { id: 'ranking', label: 'Ranking' },
 ]
@@ -717,6 +719,17 @@ export default function App() {
       {activeTab === 'campeonato' && (
         <ChampionshipScreen userId={user.id} acervo={acervo} club={club} />
       )}
+      {activeTab === 'habitualidade' && (
+        <HabitualidadeScreen
+          userId={user.id}
+          profile={profile}
+          isAdmin={profile?.role === 'admin'}
+          onSaveProfile={async (patch) => {
+            setProfile({ ...profile, ...patch })
+            await updateProfile(user.id, patch)
+          }}
+        />
+      )}
       {activeTab === 'evolucao' && <EvolutionScreen trainings={trainings} />}
       {activeTab === 'ranking' && (
         <RankingScreen
@@ -815,6 +828,16 @@ function TabIcon({ id }) {
         <path d="M16 5h3a3 3 0 0 1-3 4" />
         <path d="M12 13v4" />
         <path d="M8 20h8" />
+      </svg>
+    )
+  }
+  if (id === 'habitualidade') {
+    return (
+      <svg {...common}>
+        <rect x="5" y="4" width="14" height="17" rx="2" />
+        <path d="M9 4.5V3h6v1.5" />
+        <path d="M8.5 10.5l2 2 4-4" />
+        <path d="M8.5 16h7" />
       </svg>
     )
   }

@@ -557,3 +557,92 @@ export async function getChampionshipPhotoUrl(path, expiresIn = 60 * 60 * 24) {
   if (error) return null
   return data.signedUrl
 }
+
+// ============ HABITUALIDADE ============
+
+export async function getHabitConfig() {
+  if (!supabase) return null
+  const { data, error } = await supabase.from('habit_config').select('*').eq('id', 1).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function listClubGuns() {
+  if (!supabase) return []
+  const { data, error } = await supabase.from('club_guns').select('*').eq('ativo', true).order('tipo')
+  if (error) throw error
+  return data || []
+}
+
+export async function registerHabitSession({ gunId, dataHoraEvento, qtdMunicao, tipoEvento, nivelCompeticao, atividade, grupo, uso, inciso, selfiePath, geo, presencaFisicaCedente }) {
+  if (!supabase) throw new Error('Não autenticado')
+  const { data, error } = await supabase.rpc('register_habit_session', {
+    p_gun_id: gunId,
+    p_data_hora_evento: dataHoraEvento,
+    p_qtd_municao: qtdMunicao,
+    p_tipo_evento: tipoEvento,
+    p_nivel_competicao: nivelCompeticao,
+    p_atividade: atividade,
+    p_grupo: grupo,
+    p_uso: uso,
+    p_inciso: inciso,
+    p_selfie_path: selfiePath,
+    p_geo: geo,
+    p_presenca_fisica_cedente: presencaFisicaCedente,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function listMyHabitSessions(limit = 500) {
+  if (!supabase) return []
+  const { data, error } = await supabase.rpc('list_my_habit_sessions', { p_limit: limit })
+  if (error) throw error
+  return (data || []).map((r) => ({
+    id: r.id,
+    numeroRegistro: r.numero_registro,
+    livroSistema: r.livro_sistema,
+    folha: r.folha,
+    dataLancamento: r.data_lancamento,
+    dataHoraEvento: r.data_hora_evento,
+    arma: r.arma_snapshot,
+    grupo: r.grupo_no_evento,
+    grupo_no_evento: r.grupo_no_evento, // usado pelo motor de progresso
+    data_hora_evento: r.data_hora_evento,
+    tipo_evento: r.tipo_evento,
+    club_name: r.club_name,
+    uso: r.uso,
+    inciso: r.inciso_legal,
+    qtdMunicao: r.qtd_municao,
+    municaoCalibre: r.municao_calibre,
+    tipoEvento: r.tipo_evento,
+    nivelCompeticao: r.nivel_competicao,
+    atividade: r.atividade_desc,
+    presencaEm: r.presenca_confirmada_em,
+    geo: r.geo,
+    cessao: r.cessao,
+  }))
+}
+
+export async function uploadHabitSelfie(userId, dataUrl) {
+  if (!supabase || !userId) throw new Error('Não autenticado')
+  const match = dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/)
+  if (!match) throw new Error('Selfie inválida')
+  const mediaType = match[1]
+  const binary = atob(match[2])
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  const blob = new Blob([bytes], { type: mediaType })
+  const ext = mediaType.split('/')[1].replace('+xml', '')
+  const path = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+  const { error } = await supabase.storage.from('habit-selfies').upload(path, blob, { contentType: mediaType, upsert: false })
+  if (error) throw error
+  return path
+}
+
+export async function habitSfpcExport(competencia) {
+  if (!supabase) throw new Error('Não autenticado')
+  const { data, error } = await supabase.rpc('habit_sfpc_export', { p_competencia: competencia })
+  if (error) throw error
+  return data
+}
