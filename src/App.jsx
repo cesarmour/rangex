@@ -733,25 +733,86 @@ export default function App() {
             </div>
           </div>
         )}
-        {/* Tab navigation */}
-        <div className="max-w-2xl mx-auto px-2 pt-1 pb-1 flex">
+        {/* Tab navigation: icone + label curto (6 abas nao cabem so com texto) */}
+        <div className="max-w-2xl mx-auto px-1 pt-1 pb-1 flex">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => { setActiveTab(tab.id); window.scrollTo(0, 0) }}
-              className={`flex-1 py-3 flex flex-col items-center transition relative ${
+              className={`flex-1 min-w-0 py-2 flex flex-col items-center gap-1 transition relative ${
                 activeTab === tab.id ? 'text-navy' : 'text-stone-400 hover:text-stone-600'
               }`}
             >
-              <span className={`text-[11px] tracking-[0.12em] uppercase ${activeTab === tab.id ? 'font-bold' : 'font-medium'}`}>{tab.label}</span>
+              <TabIcon id={tab.id} />
+              <span className={`text-[8px] tracking-[0.06em] uppercase truncate max-w-full px-0.5 ${activeTab === tab.id ? 'font-bold' : 'font-medium'}`}>{tab.label}</span>
               {activeTab === tab.id && (
-                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-[2px] bg-gold" />
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[2px] bg-gold" />
               )}
             </button>
           ))}
         </div>
       </div>
     </div>
+  )
+}
+
+// Icones das abas: stroke simples, herdam currentColor do botao.
+function TabIcon({ id }) {
+  const common = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }
+  if (id === 'treino') {
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="8" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="12" cy="12" r="0.5" fill="currentColor" />
+      </svg>
+    )
+  }
+  if (id === 'acervo') {
+    return (
+      <svg {...common}>
+        <rect x="3" y="8" width="18" height="11" rx="2" />
+        <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+      </svg>
+    )
+  }
+  if (id === 'challenge') {
+    return (
+      <svg {...common}>
+        <path d="M5 5l11 11" />
+        <path d="M19 5L8 16" />
+        <path d="M4 16l4 4" />
+        <path d="M20 16l-4 4" />
+      </svg>
+    )
+  }
+  if (id === 'campeonato') {
+    return (
+      <svg {...common}>
+        <path d="M8 4h8v5a4 4 0 0 1-8 0V4z" />
+        <path d="M8 5H5a3 3 0 0 0 3 4" />
+        <path d="M16 5h3a3 3 0 0 1-3 4" />
+        <path d="M12 13v4" />
+        <path d="M8 20h8" />
+      </svg>
+    )
+  }
+  if (id === 'evolucao') {
+    return (
+      <svg {...common}>
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="M7 14l4-4 3 3 5-6" />
+      </svg>
+    )
+  }
+  // ranking: podio
+  return (
+    <svg {...common}>
+      <rect x="9" y="8" width="6" height="11" />
+      <rect x="3" y="12" width="6" height="7" />
+      <rect x="15" y="14" width="6" height="5" />
+    </svg>
   )
 }
 
