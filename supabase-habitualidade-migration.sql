@@ -12,6 +12,9 @@ alter table public.profiles
   add column if not exists cpf text,
   add column if not exists cr_numero text,
   add column if not exists cr_data date,
+  add column if not exists endereco_habitualidade text,
+  add column if not exists filiacao_numero text,
+  add column if not exists filiacao_data date,
   add column if not exists nivel_habitualidade text not null default '1'
     check (nivel_habitualidade in ('1', '2', '3', 'alto_rendimento'));
 

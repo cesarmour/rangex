@@ -68,8 +68,9 @@ export default function HabitualidadeScreen({ userId, profile, onSaveProfile, is
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showLaunch, setShowLaunch] = useState(false)
+  const [editingCadastro, setEditingCadastro] = useState(false)
 
-  const cadastroOk = Boolean(profile?.cpf?.trim() && profile?.cr_numero?.trim())
+  const cadastroOk = Boolean(profile?.cpf?.trim() && profile?.cr_numero?.trim()) && !editingCadastro
 
   const reload = async () => {
     try {
@@ -114,7 +115,11 @@ export default function HabitualidadeScreen({ userId, profile, onSaveProfile, is
       {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md p-2.5">{error}</div>}
 
       {!cadastroOk ? (
-        <CadastroCR profile={profile} onSave={onSaveProfile} />
+        <CadastroCR
+          profile={profile}
+          onSave={async (patch) => { await onSaveProfile(patch); setEditingCadastro(false) }}
+          onCancel={editingCadastro ? () => setEditingCadastro(false) : null}
+        />
       ) : (
         <>
           {showLaunch && (
@@ -149,6 +154,10 @@ export default function HabitualidadeScreen({ userId, profile, onSaveProfile, is
           )}
 
           <AnexoEBox sessions={sessions} profile={profile} config={config} />
+
+          <button onClick={() => setEditingCadastro(true)} className="text-xs text-stone-500 underline px-1">
+            editar cadastro do atirador (CPF, CR, endereço, filiação)
+          </button>
 
           {/* Livro de registros */}
           <div>
@@ -194,11 +203,14 @@ export default function HabitualidadeScreen({ userId, profile, onSaveProfile, is
 
 // ============ Cadastro CR/CPF (primeira vez) ============
 
-function CadastroCR({ profile, onSave }) {
+function CadastroCR({ profile, onSave, onCancel }) {
   const [cpf, setCpf] = useState(profile?.cpf || '')
   const [cr, setCr] = useState(profile?.cr_numero || '')
   const [crData, setCrData] = useState(profile?.cr_data || '')
   const [nivel, setNivel] = useState(profile?.nivel_habitualidade || '1')
+  const [endereco, setEndereco] = useState(profile?.endereco_habitualidade || '')
+  const [filiacaoNumero, setFiliacaoNumero] = useState(profile?.filiacao_numero || '')
+  const [filiacaoData, setFiliacaoData] = useState(profile?.filiacao_data || '')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
 
@@ -206,6 +218,7 @@ function CadastroCR({ profile, onSave }) {
     const cpfDigits = cpf.replace(/\D/g, '')
     if (cpfDigits.length !== 11) return setErr('CPF inválido (11 dígitos).')
     if (!cr.trim()) return setErr('Informe o número do seu CR.')
+    if (!endereco.trim()) return setErr('Informe seu endereço (sai no Anexo E).')
     setErr(null)
     setSaving(true)
     try {
@@ -214,6 +227,9 @@ function CadastroCR({ profile, onSave }) {
         cr_numero: cr.trim(),
         cr_data: crData || null,
         nivel_habitualidade: nivel,
+        endereco_habitualidade: endereco.trim(),
+        filiacao_numero: filiacaoNumero.trim() || null,
+        filiacao_data: filiacaoData || null,
       })
     } catch (e) {
       setErr(e.message || 'Erro ao salvar')
@@ -252,11 +268,34 @@ function CadastroCR({ profile, onSave }) {
           </select>
         </div>
       </div>
+      <div>
+        <div className="label mb-1.5">Endereço</div>
+        <input className="input" value={endereco} onChange={(e) => setEndereco(e.target.value)}
+          placeholder="Rua, nº, bairro, CEP, cidade - UF" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="min-w-0">
+          <div className="label mb-1.5">Filiação à entidade (nº)</div>
+          <input className="input" value={filiacaoNumero} onChange={(e) => setFiliacaoNumero(e.target.value)} placeholder="ex: 8062" />
+        </div>
+        <div className="min-w-0">
+          <div className="label mb-1.5">Data da filiação</div>
+          <DateField value={filiacaoData} onChange={(e) => setFiliacaoData(e.target.value)} />
+        </div>
+      </div>
       {err && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-md p-2">{err}</div>}
-      <button onClick={save} disabled={saving}
-        className="w-full px-4 py-3 bg-navy text-white text-sm font-semibold rounded-md border-b-2 border-gold disabled:opacity-50 transition">
-        {saving ? 'salvando…' : 'salvar cadastro'}
-      </button>
+      <div className={`grid ${onCancel ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+        {onCancel && (
+          <button onClick={onCancel}
+            className="px-4 py-3 bg-stone-100 text-stone-600 text-sm font-semibold rounded-md hover:bg-stone-200 transition">
+            cancelar
+          </button>
+        )}
+        <button onClick={save} disabled={saving}
+          className="px-4 py-3 bg-navy text-white text-sm font-semibold rounded-md border-b-2 border-gold disabled:opacity-50 transition">
+          {saving ? 'salvando…' : 'salvar cadastro'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -506,6 +545,9 @@ function AnexoEBox({ sessions, profile, config }) {
           cr: profile?.cr_numero,
           crData: profile?.cr_data,
           nivel: profile?.nivel_habitualidade || '1',
+          endereco: profile?.endereco_habitualidade || '',
+          filiacaoNumero: profile?.filiacao_numero || '',
+          filiacaoData: profile?.filiacao_data || null,
         },
         config,
         periodo: { inicio: `${inicio}T00:00:00`, fim: `${fim}T00:00:00` },

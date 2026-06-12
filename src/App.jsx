@@ -12,12 +12,12 @@ import ChallengeScreen from './components/ChallengeScreen.jsx'
 import ChampionshipScreen from './components/ChampionshipScreen.jsx'
 import HomeScreen from './components/HomeScreen.jsx'
 import HabitualidadeScreen from './components/HabitualidadeScreen.jsx'
-import { DEFAULT_ACERVO, DEFAULT_PRECOS, DEFAULT_SETTINGS } from './lib/defaults.js'
+import { DEFAULT_PRECOS, DEFAULT_SETTINGS } from './lib/defaults.js'
 import { isConfigured } from './lib/supabase.js'
 import { getSession, onAuthChange, signOut } from './lib/auth.js'
 import {
   loadProfile, updateProfile,
-  loadAcervo, addAcervo, updateAcervo, deleteAcervo, seedDefaultAcervo,
+  loadAcervo, addAcervo, updateAcervo, deleteAcervo,
   loadTrainings, saveTraining, deleteTraining, getTrainingFull,
   acceptJudgeInvite,
 } from './lib/db.js'
@@ -163,11 +163,10 @@ export default function App() {
       try {
         setHydrationError(null)
         const p = await withTimeout(loadProfile(user.id), 'perfil')
-        let userAcervo = await withTimeout(loadAcervo(user.id), 'acervo')
-        if (userAcervo.length === 0) {
-          await withTimeout(seedDefaultAcervo(DEFAULT_ACERVO), 'configuração inicial')
-          userAcervo = await withTimeout(loadAcervo(user.id), 'acervo')
-        }
+        // Usuario novo comeca com acervo VAZIO (o seed antigo copiava uma
+        // lista pessoal pra todo mundo). Ele cadastra pelo form ou usa o
+        // catalogo global na sessao.
+        const userAcervo = await withTimeout(loadAcervo(user.id), 'acervo')
         const userTrainings = await withTimeout(loadTrainings(user.id), 'treinos')
         if (cancelled) return
         setProfile(p)
