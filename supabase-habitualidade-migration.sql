@@ -48,7 +48,7 @@ values (
   ),
   jsonb_build_object(
     'nome', 'Daniel Pazzini Araujo da Silva',
-    'cargo', 'Diretor',
+    'cargo', 'Presidente',
     'cpf', '483.308.208-07',
     'cert_assinatura_tipo', 'gov_br'
   )

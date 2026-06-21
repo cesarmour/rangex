@@ -14,6 +14,7 @@ import HomeScreen from './components/HomeScreen.jsx'
 import HabitualidadeScreen from './components/HabitualidadeScreen.jsx'
 import ProfilePanel from './components/ProfilePanel.jsx'
 import { DEFAULT_PRECOS, DEFAULT_SETTINGS } from './lib/defaults.js'
+import { DEFAULT_TARGET } from './lib/targets.js'
 import { isConfigured } from './lib/supabase.js'
 import { getSession, onAuthChange, signOut } from './lib/auth.js'
 import {
@@ -401,10 +402,27 @@ export default function App() {
           calibre: current.calibre,
           expectedShots: current.disparos > 0 ? current.disparos : null,
           distancia: current.distancia > 0 ? current.distancia : null,
+          targetType: current.targetType || DEFAULT_TARGET,
+          frame: current.frame || null,
         })
+        // Salva os MESMOS campos da analise individual. Antes gravava
+        // result.quadrantes (inexistente) e nao gravava scoring/frame, entao
+        // a sessao ficava "analisada" sem dados e exigia reanalise manual.
         setSessions((prev) => prev.map((s) =>
           s.id === id
-            ? { ...s, disparos: result.disparos, pontos: result.pontos, resumo: result.resumo, diagnostico: result.resumo, quadrantes: result.quadrantes, analyzed: true }
+            ? {
+                ...s,
+                disparos: result.disparos,
+                pontos: result.pontos,
+                resumo: result.resumo,
+                diagnostico: result.resumo,
+                scoring: result.scoring,
+                frame: result.frame,
+                targetType: result.targetType,
+                detectionSource: result.detectionSource,
+                detectionNote: result.detectionError || '',
+                analyzed: true,
+              }
             : s
         ))
       } catch (e) {
