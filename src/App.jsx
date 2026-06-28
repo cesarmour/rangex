@@ -93,6 +93,14 @@ export default function App() {
   const [showTrainings, setShowTrainings] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [pdfs, setPdfs] = useState(null)
+  // Relatorios gerados ficam presos ao estado do treino no momento da geracao.
+  // Se as sessoes ou a data mudam depois, descarta os PDFs (estavam stale) pra
+  // a pessoa regerar e nunca baixar um conjunto antigo.
+  const pdfsStaleRef = useRef(false)
+  useEffect(() => {
+    if (pdfsStaleRef.current) { setPdfs(null) }
+    pdfsStaleRef.current = true
+  }, [sessions, trainingDateTime])
   const [saveFlash, setSaveFlash] = useState(false)
   const [batchAnalyzing, setBatchAnalyzing] = useState(false)
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 })
@@ -438,18 +446,31 @@ export default function App() {
     setGenerating(true)
     setPdfs(null)
     try {
-      const dateStr = todayDateStr()
+      // Data e nomes vem do TREINO sendo gerado, nao de hoje. Antes todos os
+      // relatorios do mesmo dia saiam com a mesma data e o MESMO nome de
+      // arquivo, entao o navegador servia o PDF antigo do cache. Agora cada
+      // treino gera um conjunto unico (data do treino + token unico no nome).
+      const trainedAtISO = fromDateTimeLocal(trainingDateTime)
+      const td = new Date(trainedAtISO)
+      const dd = String(td.getDate()).padStart(2, '0')
+      const mm = String(td.getMonth() + 1).padStart(2, '0')
+      const yyyy = td.getFullYear()
+      const dateShort = `${dd}.${mm}.${yyyy}`          // cabecalho do PDF
+      const dateFile = `${dd}-${mm}-${yyyy}`           // nome do arquivo
+      const dateLong = td.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+      const uniq = `${td.getHours()}${String(td.getMinutes()).padStart(2, '0')}-${Date.now().toString(36).slice(-4)}`
+
       const sess = validSessions
-      const resumoDoc = buildResumo({ sessions: sess, totals, sessionsPlatformCount, club })
-      const completoDoc = await buildCompleto({ sessions: sess, totals, sessionsPlatformCount, precos, club })
+      const resumoDoc = buildResumo({ sessions: sess, totals, sessionsPlatformCount, club, date: dateShort })
+      const completoDoc = await buildCompleto({ sessions: sess, totals, sessionsPlatformCount, precos, club, date: dateShort })
       const cobrancaDoc = await buildCobranca({
-        sessions: sess, totals, precos, club,
+        sessions: sess, totals, precos, club, date: dateShort, dateLong,
         pix: { key: settings.pixKey, merchant: settings.pixMerchant, city: settings.pixCity },
       })
       setPdfs({
-        resumo: { doc: resumoDoc, name: `resumo_executivo_${dateStr}.pdf` },
-        completo: { doc: completoDoc, name: `relatorio_completo_${dateStr}.pdf` },
-        cobranca: { doc: cobrancaDoc, name: `cobranca_${dateStr}.pdf` },
+        resumo: { doc: resumoDoc, name: `resumo_executivo_${dateFile}_${uniq}.pdf` },
+        completo: { doc: completoDoc, name: `relatorio_completo_${dateFile}_${uniq}.pdf` },
+        cobranca: { doc: cobrancaDoc, name: `cobranca_${dateFile}_${uniq}.pdf` },
       })
     } catch (e) {
       console.error(e)

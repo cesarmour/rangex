@@ -6,10 +6,10 @@ import {
   newDoc, today, buildSubtitle,
 } from './utils.js'
 
-export function buildResumo({ sessions, totals, sessionsPlatformCount, club }) {
+export function buildResumo({ sessions, totals, sessionsPlatformCount, club, date: dateOverride }) {
   const doc = newDoc()
   const TOTAL_PAGES = 2
-  const date = today()
+  const date = dateOverride || today()
   const drawHF = (page) => drawChrome(doc, { page, totalPages: TOTAL_PAGES, date, club })
 
   drawHF(1)

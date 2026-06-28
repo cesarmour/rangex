@@ -24,9 +24,9 @@ async function addImageFit(doc, dataUrl, x, y, maxW, maxH) {
   return { drawW, drawH }
 }
 
-export async function buildCompleto({ sessions, totals, sessionsPlatformCount, precos, club }) {
+export async function buildCompleto({ sessions, totals, sessionsPlatformCount, precos, club, date: dateOverride }) {
   const doc = newDoc()
-  const date = today()
+  const date = dateOverride || today()
   const TOTAL_PAGES = 3 + sessions.length
 
   let pageNum = 1

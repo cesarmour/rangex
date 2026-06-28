@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { CALIBRES } from '../lib/defaults.js'
-import { analyzeTarget } from '../lib/analyze.js'
+import { analyzeTarget, detectAndScore, scoreWithFrame } from '../lib/analyze.js'
+import { DEFAULT_TARGET, DEFAULT_FRAME } from '../lib/targets.js'
+import TargetOverlay from './TargetOverlay.jsx'
 import {
   findDuelOpponents,
   createDuel,
@@ -14,6 +16,18 @@ import {
 } from '../lib/db.js'
 
 const EXPECTED_SHOTS = 12
+const DUEL_TARGET = DEFAULT_TARGET // duelo usa o padrao 4 cores, igual ao treino
+
+// Junta os furos do scoring num array plano (mesmo helper do treino)
+function gatherDuelHoles(scoring) {
+  const holes = []
+  for (const q of ['amarelo', 'verde', 'vermelho', 'azul']) {
+    const qd = scoring?.quadrantes?.[q]
+    if (!qd?.hits) continue
+    for (const h of qd.hits) holes.push({ x: h.x, y: h.y, confidence: h.confidence })
+  }
+  return holes
+}
 const POLL_INTERVAL_MS = 5000
 
 // Compress image client-side before upload
@@ -498,8 +512,10 @@ function DuelView({ duel, userId, userDisplayName, onBack, onUpdate }) {
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [photo, setPhoto] = useState(null)
-  const [analysis, setAnalysis] = useState(null)
+  const [analysis, setAnalysis] = useState(null)   // { scoring, frame, resumo, detectionSource, detectionError }
   const [analyzing, setAnalyzing] = useState(false)
+  const [redetecting, setRedetecting] = useState(false)
+  const [editMode, setEditMode] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [remaining, setRemaining] = useState(formatRemaining(duel.expiresAt))
 
@@ -538,6 +554,7 @@ function DuelView({ duel, userId, userDisplayName, onBack, onUpdate }) {
       const compressed = await compressImage(dataUrl)
       setPhoto(compressed)
       setAnalysis(null)
+      setEditMode(false)
     } catch (e) {
       setError('Erro ao carregar foto: ' + e.message)
     }
@@ -554,8 +571,16 @@ function DuelView({ duel, userId, userDisplayName, onBack, onUpdate }) {
         calibre: duel.calibre,
         expectedShots: EXPECTED_SHOTS,
         distancia: duel.distancia,
+        targetType: DUEL_TARGET,
       })
-      setAnalysis(result)
+      setAnalysis({
+        scoring: result.scoring,
+        frame: result.frame,
+        resumo: result.resumo,
+        detectionSource: result.detectionSource,
+        detectionError: result.detectionError,
+      })
+      setEditMode(result.scoring?.total_disparos === 0) // sem furo: ja abre edicao
     } catch (e) {
       setError('Erro ao analisar: ' + e.message)
     } finally {
@@ -563,16 +588,52 @@ function DuelView({ duel, userId, userDisplayName, onBack, onUpdate }) {
     }
   }
 
+  // Edicao manual igual ao treino: overlay re-pontua sozinho.
+  const handleScoringChange = (newScoring) => {
+    setAnalysis((a) => (a ? { ...a, scoring: newScoring } : a))
+  }
+
+  // Ajuste do quadro: re-pontua os furos atuais contra o quadro novo.
+  const handleFrameChange = (newFrame) => {
+    setAnalysis((a) => {
+      if (!a) return a
+      const holes = gatherDuelHoles(a.scoring)
+      const newScoring = scoreWithFrame(holes, {
+        frame: newFrame, targetType: DUEL_TARGET, imageAspect: a.scoring?.image_aspect,
+      })
+      return { ...a, scoring: newScoring, frame: newFrame }
+    })
+  }
+
+  // Redetecta dentro do quadro corrigido, sem IA (igual ao treino).
+  const handleRedetect = async () => {
+    if (!photo) return
+    setRedetecting(true)
+    setError(null)
+    try {
+      const { scoring, frame } = await detectAndScore({
+        photo, arma: duel.arma, calibre: duel.calibre,
+        expectedShots: EXPECTED_SHOTS, distancia: duel.distancia,
+        frame: analysis?.frame || null, targetType: DUEL_TARGET,
+      })
+      setAnalysis((a) => ({ ...a, scoring, frame }))
+    } catch (e) {
+      setError('Erro ao redetectar: ' + e.message)
+    } finally {
+      setRedetecting(false)
+    }
+  }
+
   const handleSubmit = async () => {
-    if (!analysis || !photo) return
+    if (!analysis?.scoring || !photo) return
     setError(null)
     setSubmitting(true)
     try {
       const photoPath = await uploadChallengePhoto(userId, photo)
       await submitDuelResult(duel.id, {
-        pontos: analysis.pontos,
-        disparos: analysis.disparos,
-        quadrantes: analysis.quadrantes,
+        pontos: analysis.scoring.total_pontos,
+        disparos: analysis.scoring.total_disparos,
+        quadrantes: analysis.scoring.quadrantes, // furos reais (antes ia vazio)
         photoPath,
       })
       onUpdate()
@@ -766,13 +827,53 @@ function DuelView({ duel, userId, userDisplayName, onBack, onUpdate }) {
                 <>
                   <div className="bg-black/40 border border-white/10 rounded-md p-3 space-y-2">
                     <div className="flex items-baseline gap-2">
-                      <div className="text-2xl font-display font-bold text-white">{analysis.pontos}</div>
-                      <div className="text-[10px] text-stone-400 tracking-wider uppercase font-mono">pontos · {analysis.disparos} disparos</div>
+                      <div className="text-2xl font-display font-bold text-white">{analysis.scoring?.total_pontos || 0}</div>
+                      <div className="text-[10px] text-stone-400 tracking-wider uppercase font-mono">pontos · {analysis.scoring?.total_disparos || 0} disparos</div>
                     </div>
-                    {(analysis.resumo || analysis.diagnostico) && (
+                    {analysis.resumo && (
                       <div className="text-[11px] text-stone-300 leading-relaxed border-t border-white/10 pt-2">
-                        {analysis.resumo || analysis.diagnostico}
+                        {analysis.resumo}
                       </div>
+                    )}
+                  </div>
+
+                  {/* Overlay editavel: mesmo sistema do treino (zoom, marcas, quadro) */}
+                  <div className="bg-white rounded-md p-2">
+                    <TargetOverlay
+                      photo={photo}
+                      scoring={analysis.scoring}
+                      editable={editMode || analysis.scoring?.total_disparos === 0}
+                      onScoringChange={handleScoringChange}
+                      frame={analysis.frame}
+                      targetType={DUEL_TARGET}
+                      frameEditable={editMode || analysis.scoring?.total_disparos === 0}
+                      onFrameChange={handleFrameChange}
+                    />
+                  </div>
+
+                  {analysis.scoring?.total_disparos === 0 && (
+                    <div className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-md p-2.5 leading-relaxed">
+                      Nenhum furo detectado. Ajuste o quadro amarelo e toque em "redetectar no quadro", ou marque os furos na mão tocando na foto.
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setEditMode(!editMode)}
+                      className={`px-3 py-2 text-[11px] font-bold tracking-wider uppercase rounded-md transition font-mono ${
+                        editMode ? 'bg-orange-tactical text-black' : 'bg-white/10 hover:bg-white/15 border border-white/20 text-white'
+                      }`}
+                    >
+                      {editMode || analysis.scoring?.total_disparos === 0 ? 'concluir edição' : 'corrigir marcações'}
+                    </button>
+                    {(editMode || analysis.scoring?.total_disparos === 0) && (
+                      <button
+                        onClick={handleRedetect}
+                        disabled={redetecting}
+                        className="px-3 py-2 text-[11px] font-bold tracking-wider uppercase rounded-md bg-white/10 hover:bg-white/15 border border-white/20 text-white disabled:opacity-50 transition font-mono"
+                      >
+                        {redetecting ? 'redetectando…' : 'redetectar no quadro'}
+                      </button>
                     )}
                   </div>
 

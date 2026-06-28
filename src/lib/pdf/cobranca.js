@@ -7,15 +7,15 @@ import {
 } from './utils.js'
 import { buildPixPayload } from '../pix.js'
 
-export async function buildCobranca({ sessions, totals, precos, pix, club }) {
+export async function buildCobranca({ sessions, totals, precos, pix, club, date: dateOverride, dateLong: dateLongOverride }) {
   const doc = newDoc()
-  const date = today()
+  const date = dateOverride || today()
   const TOTAL_PAGES = 1
 
   drawChrome(doc, { page: 1, totalPages: TOTAL_PAGES, date, club })
 
   let y = PAGE.marginTop + 6
-  const subtitleParts = [`Sessão de ${todayLong()}`]
+  const subtitleParts = [`Sessão de ${dateLongOverride || todayLong()}`]
   if (club?.name) subtitleParts.push(club.name)
   y = drawTitleBlock(doc, y, {
     tag: 'Cobrança',
