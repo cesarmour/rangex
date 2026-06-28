@@ -89,25 +89,40 @@ export function buildResumo({ sessions, totals, sessionsPlatformCount, club, dat
     },
   })
 
+  // Diagnostico por sessao, vindo do texto REAL de cada arma (s.resumo/diagnostico).
+  // Antes esta secao era texto fixo citando armas que nao estavam na sessao.
+  let narrPage = 2
   doc.addPage()
-  drawHF(2)
-
+  drawHF(narrPage)
   y = PAGE.marginTop + 6
-  y = drawSectionHeader(doc, y, 'Pontos fortes')
-  y = drawBullet(doc, y, 'Sessão executada com regularidade técnica e estrutura analítica clara por plataforma.') + 1
-  y = drawBullet(doc, y, 'Diagnóstico cruzado entre pistola e rifle permite isolar variáveis de técnica vs. mecânica.') + 1
-  y = drawBullet(doc, y, 'Resiliência: múltiplas sessões em uma única ida, mantendo padrão de avaliação.') + 4
+  y = drawSectionHeader(doc, y, 'Diagnóstico por sessão')
 
-  y = drawSectionHeader(doc, y, 'Pontos a corrigir')
-  y = drawBullet(doc, y, 'padrão baixo-esquerda no Shield 9mm indica antecipação de coice e pressão lateral do gatilho.', { bold: 'Antecipação de coice no Shield 9mm:' }) + 1
-  y = drawBullet(doc, y, 'viés alto consistente em 5.56 e .22 LR indica calibragem de zero, não técnica.', { bold: 'Zero / POA dos rifles:' }) + 1
-  y = drawBullet(doc, y, 'azul costuma vir como último quadrante. Indicador de fadiga ou pressa.', { bold: 'Dispersão final no azul:' }) + 4
+  const ensure = (need) => {
+    if (y > PAGE.height - PAGE.marginBottom - need) {
+      narrPage += 1
+      doc.addPage()
+      drawHF(narrPage)
+      y = PAGE.marginTop + 6
+    }
+  }
 
-  y = drawSectionHeader(doc, y, 'Próximos passos')
-  y = drawBullet(doc, y, 'Sessão de ajuste técnico com Capitão Cavalheiro: flinch no Shield + zero dos rifles.') + 1
-  y = drawBullet(doc, y, 'Implementar drill de bola seca (ball and dummy) em todas as sessões de pistola.') + 1
-  y = drawBullet(doc, y, 'Confirmar zero do Zion-15 e Wildcat em distância controlada (25m e 50m).') + 1
-  y = drawBullet(doc, y, 'Manter cadência semanal com plano estruturado por plataforma.')
+  sessions.forEach((s, i) => {
+    ensure(34)
+    const ptsTiro = s.disparos > 0 ? (s.pontos / s.disparos).toFixed(2) : '—'
+    y = drawSectionHeader(doc, y, `S${i + 1} · ${s.arma || 'Sem arma'}${s.calibre ? ' · ' + s.calibre : ''}`)
+    y = drawParagraph(doc, y,
+      `${s.disparos || 0} disparos · ${s.pontos || 0} pontos · ${ptsTiro} pts/tiro` +
+      `${s.distancia ? ' · ' + s.distancia + 'm' : ''}.`) + 2
+    const texto = (s.resumo || s.diagnostico || '').trim()
+    if (texto) {
+      ensure(20)
+      y = drawParagraph(doc, y, texto) + 5
+    } else {
+      y = drawParagraph(doc, y,
+        'Sem diagnóstico textual gerado para esta sessão. Use "Reanalisar com IA" ' +
+        'ou escreva o resumo na própria sessão.') + 5
+    }
+  })
 
   return doc
 }

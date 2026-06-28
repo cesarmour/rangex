@@ -211,15 +211,18 @@ export async function buildCompleto({ sessions, totals, sessionsPlatformCount, p
   })
   y = doc.lastAutoTable.finalY + 8
 
-  y = drawSectionHeader(doc, y, 'Pontos fortes')
-  y = drawBullet(doc, y, 'Diagnóstico cruzado entre plataformas permite isolar variáveis técnicas e mecânicas.') + 1
-  y = drawBullet(doc, y, 'Estrutura analítica mantida ao longo de todas as sessões da ida.') + 1
-  y = drawBullet(doc, y, 'Consistência no padrão de execução por plataforma.') + 4
-
-  y = drawSectionHeader(doc, y, 'Pontos a corrigir')
-  y = drawBullet(doc, y, 'Conferir zero antes de fechar diagnóstico técnico.', { bold: 'Zero / POA dos rifles:' }) + 1
-  y = drawBullet(doc, y, 'Atenção ao último quadrante, costuma concentrar fadiga.', { bold: 'Dispersão final:' }) + 1
-  y = drawBullet(doc, y, 'Ball-and-dummy drills para neutralizar antecipação.', { bold: 'Flinch nas pistolas:' })
+  // Diagnostico real por sessao (texto proprio de cada arma), nao texto fixo.
+  y = drawSectionHeader(doc, y, 'Diagnóstico por sessão')
+  sessions.forEach((s, i) => {
+    if (y > PAGE.height - PAGE.marginBottom - 30) { doc.addPage(); pageNum++; draw(); y = PAGE.marginTop + 6 }
+    const ptsTiro = s.disparos > 0 ? (s.pontos / s.disparos).toFixed(2) : '—'
+    y = drawSectionHeader(doc, y, `S${i + 1} · ${s.arma || 'Sem arma'}${s.calibre ? ' · ' + s.calibre : ''}`)
+    y = drawParagraph(doc, y,
+      `${s.disparos || 0} disparos · ${s.pontos || 0} pontos · ${ptsTiro} pts/tiro` +
+      `${s.distancia ? ' · ' + s.distancia + 'm' : ''}.`) + 2
+    const texto = (s.resumo || s.diagnostico || '').trim()
+    y = drawParagraph(doc, y, texto || 'Sem diagnóstico textual gerado para esta sessão.') + 5
+  })
 
   doc.addPage()
   pageNum++
@@ -231,13 +234,13 @@ export async function buildCompleto({ sessions, totals, sessionsPlatformCount, p
     title: 'Plano de evolução',
   })
 
-  y = drawSectionHeader(doc, y, '1. Sessão de ajuste técnico com Capitão Cavalheiro')
+  y = drawSectionHeader(doc, y, '1. Recomendações técnicas gerais')
   y = drawParagraph(doc, y,
-    'Continuidade do plano de evolução. Foco no diagnóstico consolidado da sessão atual, ' +
-    'com prioridades por plataforma e checkpoints mensuráveis.') + 4
-  y = drawBullet(doc, y, 'drill de bola seca para neutralizar antecipação de coice.', { bold: 'Correção de flinch:' }) + 1
-  y = drawBullet(doc, y, 'verificação do ponto de contato do dedo no gatilho.', { bold: 'Trigger control:' }) + 1
-  y = drawBullet(doc, y, 'calibragem em distância controlada (25m e 50m).', { bold: 'Confirmação de zero:' }) + 6
+    'Boas práticas de evolução para aplicar nas próximas idas, com checkpoints mensuráveis. ' +
+    'O diagnóstico específico por arma está na seção "Diagnóstico por sessão".') + 4
+  y = drawBullet(doc, y, 'drill de bola seca (ball-and-dummy) para neutralizar antecipação de coice.', { bold: 'Controle de flinch:' }) + 1
+  y = drawBullet(doc, y, 'verificação do ponto de contato do dedo no gatilho e respiro.', { bold: 'Trigger control:' }) + 1
+  y = drawBullet(doc, y, 'confirmar zero/POA em distância controlada antes de medir técnica.', { bold: 'Calibragem:' }) + 6
 
   y = drawSectionHeader(doc, y, '2. Janelas sugeridas para agendamento')
   const today2 = new Date()
@@ -247,9 +250,9 @@ export async function buildCompleto({ sessions, totals, sessionsPlatformCount, p
     return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
   }
   const sched = [
-    ['A', addDays(7) + '  ·  manhã', '2h', 'Pistola: revisão de flinch'],
-    ['B', addDays(14) + '  ·  manhã', '2h30', 'Rifle: zero + POA'],
-    ['C', addDays(21) + '  ·  manhã', '3h', 'Sessão integrada: todas as plataformas'],
+    ['A', addDays(7) + '  ·  manhã', '2h', 'Técnica: controle de gatilho e flinch'],
+    ['B', addDays(14) + '  ·  manhã', '2h30', 'Precisão: confirmação de zero/POA'],
+    ['C', addDays(21) + '  ·  manhã', '3h', 'Sessão integrada das plataformas da ida'],
   ]
   autoTable(doc, {
     startY: y,
